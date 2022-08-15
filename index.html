@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Conway's Game Of Life</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"
+    integrity="sha512-N4kV7GkNv7QR7RX9YF/olywyIgIwNvfEe2nZtfyj73HdjCUkAfOBDbcuJ/cTaN04JKRnw1YG1wnUyNKMsNgg3g=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.3/codemirror.min.js"
+    integrity="sha512-hGVnilhYD74EGnPbzyvje74/Urjrg5LSNGx0ARG1Ucqyiaz+lFvtsXk/1jCwT9/giXP0qoXSlVDjxNxjLvmqAw=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.3/codemirror.min.css"
+    integrity="sha512-6sALqOPMrNSc+1p5xOhPwGIzs6kIlST+9oGWlI4Wwcbj1saaX9J3uzO3Vub016dmHV7hM+bMi/rfXLiF5DNIZg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.3/mode/javascript/javascript.min.js"
+    integrity="sha512-DJ/Flq7rxJDDhgkO49H/rmidX44jmxWot/ku3c+XXEF9XFal78KIpu7w6jEaQhK4jli1U3/yOH+Rp3cIIEYFPQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.3/addon/display/autorefresh.min.js"
+    integrity="sha512-vAsKB7xXQAWMn5kcwda0HkFVKUxSYwrmrGprVhmbGFNAG1Ij+2epT3zzdwjHTJyDsKXsiEdrUdhIxh7loHyX+A=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.3/theme/monokai.min.css"
+    integrity="sha512-R6PH4vSzF2Yxjdvb2p2FA06yWul+U0PDDav4b/od/oXf9Iw37zl10plvwOXelrjV2Ai7Eo3vyHeyFUjhXdBCVQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato&display=swap" rel="stylesheet">
+
+  <script src="index.js"></script>
+  <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+  <div id='simulation'></div>
+  <div id="controls">
+    <h1>Conway's Game Of Life</h1>
+    <p>
+      This is an implementation of the Game Of Life.
+      GOL is a cellular automaton devised by John Horton Conway,
+      an amazing mathematician and unfortunately yet another
+      victim of fricking COVID-19.
+    </p>
+    <p>
+      This toy allows you to customize every crucial aspect
+      of the simulation by writing your own JS code.
+      The buttons in each section will load interesting defaults.
+    </p>
+    <p>
+      When you're done editing the code you must
+      <a class="interactor" id="restart" href="#">restart the simulation</a>.
+    </p>
+    <details>
+      <summary>
+        <h2>Automaton rule</h2>
+      </summary>
+      <p>
+        The heart of the automaton is the rule which calculates the evolution of the system.
+        <a class="interactor" id="rule_conway" href="#">Conway's traditional rule</a> is the most famous one.
+        An interesting alternative is a <a class="interactor" id="rule_parity" href="#">neighbours parity rule</a> which
+        is able to produce pretty fractal patterns (try using it with a seed of a single point).
+      </p>
+      <div id="rule_editor"></div>
+    </details>
+    <details>
+      <summary>
+        <h2>Initial seed</h2>
+      </summary>
+      <p>
+        The initial conditions of the field completely determine its evolution.
+        An obvious choice is filling it with <a class="interactor" id="seed_random" href="#">random cells</a>.
+        Another interesting choice (when used with the parity rule) is starting with a <a class="interactor"
+          id="seed_singleton" href="#">single lone cell</a>.
+      </p>
+      <div id="seed_editor"></div>
+    </details>
+    <details>
+      <summary>
+        <h2>World Boundaries</h2>
+      </summary>
+      <p>
+        The simulated world is finite and we must decide how to handle calculations at the boundaries.
+        We can <a class="interactor" id="edge_wrap" href="#">wrap around the edges</a>
+        but also treat them like an <a class="interactor" id="edge_wall" href="#">impenetrable wall</a>.
+      </p>
+      <div id="edge_editor"></div>
+    </details>
+  </div>
+</body>
+
+</html>
