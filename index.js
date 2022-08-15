@@ -32,6 +32,7 @@ class KOK {
   constructor({ cols = 512, rows = 512, fps = 16 } = {}) {
     this.backToCenter();
     this.initP5();
+    this.phase = "spiral"
   }
 
   //-[ P5 ]---------------------------------------------------------------------
@@ -44,6 +45,35 @@ class KOK {
     this.spider = { x : 250 , y : 250 , a : 2 * Math.PI * Math.random() }
   }
 
+  drawSpiral (p) {
+    let dr = 0.75 * this.spider.a
+    let da = (10 / 180 * Math.PI)
+    let target = {
+      x : this.spider.x + dr * Math.cos(this.spider.a + da),
+      y : this.spider.y + dr * Math.sin(this.spider.a + da),
+      a : this.spider.a + da
+    }
+    p.line(this.spider.x, this.spider.y, target.x, target.y);
+    this.spider = target
+    if (this.isOutOfBounds()) {
+      this.backToCenter()
+      this.phase = "radial"
+    }
+  }
+
+  drawRadial (p) {
+    let r = Math.random() * 30
+    let da = (2 * Math.random() - 1) * Math.PI / 12
+    let target = {
+      x : this.spider.x + r * Math.cos(this.spider.a + da),
+      y : this.spider.y + r * Math.sin(this.spider.a + da),
+      a : this.spider.a + da
+    }
+    p.line(this.spider.x, this.spider.y, target.x, target.y);
+    this.spider = target
+    if (this.isOutOfBounds()) this.backToCenter()
+  }
+
   initP5() {
     let sketch = (p) => {
       let black = p.color(0);
@@ -52,28 +82,24 @@ class KOK {
       p.setup = () => {
         p.pixelDensity(1); // useful on retina screens
         p.createCanvas(500, 500);
-        p.frameRate(30);
+        p.frameRate(60);
       };
 
       p.draw = () => {
-        // this.tick();
-        p.line(10, 10, 50, 50);
-
-        let r = Math.random() * 30
-        let da = (2 * Math.random() - 1) * Math.PI / 12
-        let target = {
-          x : this.spider.x + r * Math.cos(this.spider.a + da),
-          y : this.spider.y + r * Math.sin(this.spider.a + da),
-          a : this.spider.a + da
-        }
-        p.line(this.spider.x, this.spider.y, target.x, target.y);
-        // for (let x = 0; x < this.cols; x++) {
-        //   for (let y = 0; y < this.rows; y++) {
-        //     p.set(x, y, this.currState[x][y] ? black : white);
-        //   }
+        // spiral
+        if (this.phase === "spiral") this.drawSpiral(p)
+        if (this.phase === "radial") this.drawRadial(p)
+        // radial lines
+        // let r = Math.random() * 30
+        // let da = (2 * Math.random() - 1) * Math.PI / 12
+        // let target = {
+        //   x : this.spider.x + r * Math.cos(this.spider.a + da),
+        //   y : this.spider.y + r * Math.sin(this.spider.a + da),
+        //   a : this.spider.a + da
         // }
-        this.spider = target
-        if (this.isOutOfBounds()) this.backToCenter()
+        // p.line(this.spider.x, this.spider.y, target.x, target.y);
+        // this.spider = target
+        // if (this.isOutOfBounds()) this.backToCenter()
 
         p.updatePixels();
       };
