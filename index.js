@@ -1,5 +1,6 @@
 //=[ CONSTANTS ]================================================================
 
+const RADIAL_COUNT = 2 * 16
 
 const SELECTORS = {
   SIMULATION: "#simulation",
@@ -30,9 +31,9 @@ const EDITORS_DEFAULT_CONFIG = {
 
 class KOK {
   constructor({ cols = 512, rows = 512, fps = 16 } = {}) {
-    this.backToCenter();
+    this.spider = { x : 250 , y : 250 , a : 0 , radLines : 0 };
     this.initP5();
-    this.phase = "spiral"
+    this.phase = "radial"
   }
 
   //-[ P5 ]---------------------------------------------------------------------
@@ -42,7 +43,8 @@ class KOK {
   }
 
   backToCenter () {
-    this.spider = { x : 250 , y : 250 , a : 2 * Math.PI * Math.random() }
+    this.spider.x = 250
+    this.spider.y = 250
   }
 
   drawSpiral (p) {
@@ -54,24 +56,33 @@ class KOK {
       a : this.spider.a + da
     }
     p.line(this.spider.x, this.spider.y, target.x, target.y);
-    this.spider = target
+    this.spider.x = target.x
+    this.spider.y = target.y
+    this.spider.a = target.a
     if (this.isOutOfBounds()) {
       this.backToCenter()
-      this.phase = "radial"
+      this.phase = "stop"
     }
   }
 
   drawRadial (p) {
     let r = Math.random() * 30
-    let da = (2 * Math.random() - 1) * Math.PI / 12
+    let da = (2 * Math.random() - 1) * Math.PI / 60
     let target = {
       x : this.spider.x + r * Math.cos(this.spider.a + da),
       y : this.spider.y + r * Math.sin(this.spider.a + da),
       a : this.spider.a + da
     }
     p.line(this.spider.x, this.spider.y, target.x, target.y);
-    this.spider = target
-    if (this.isOutOfBounds()) this.backToCenter()
+    this.spider.x = target.x
+    this.spider.y = target.y
+    this.spider.a = target.a
+    if (this.isOutOfBounds()) {
+      this.backToCenter()
+      this.spider.radLines += 1
+      this.spider.a = (2 * Math.PI / RADIAL_COUNT) * this.spider.radLines
+      if (this.spider.radLines > RADIAL_COUNT - 1) this.phase = "spiral"
+    }
   }
 
   initP5() {
@@ -82,25 +93,19 @@ class KOK {
       p.setup = () => {
         p.pixelDensity(1); // useful on retina screens
         p.createCanvas(500, 500);
-        p.frameRate(60);
+        p.frameRate(120);
       };
 
       p.draw = () => {
+        // p.strokeWeight(5);
+        // radial lines
+        if (this.phase === "radial") this.drawRadial(p)
         // spiral
         if (this.phase === "spiral") this.drawSpiral(p)
-        if (this.phase === "radial") this.drawRadial(p)
-        // radial lines
-        // let r = Math.random() * 30
-        // let da = (2 * Math.random() - 1) * Math.PI / 12
-        // let target = {
-        //   x : this.spider.x + r * Math.cos(this.spider.a + da),
-        //   y : this.spider.y + r * Math.sin(this.spider.a + da),
-        //   a : this.spider.a + da
-        // }
-        // p.line(this.spider.x, this.spider.y, target.x, target.y);
-        // this.spider = target
-        // if (this.isOutOfBounds()) this.backToCenter()
-
+        if (this.phase === "stop") {
+          p.loadPixels();
+          console.log(1 - p.pixels.filter((x, i) => x === 0 && i % 4 === 3).length / (500 * 500))
+        }
         p.updatePixels();
       };
     };
