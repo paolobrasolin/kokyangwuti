@@ -328,7 +328,7 @@ function init() {
     ui.speedBtn.textContent = `Speed: ${simSpeed}x`;
   });
   ui.popInput.addEventListener('input', (e) => {
-    targetPopulation = parseInt((e.target as HTMLInputElement).value);
+    targetPopulation = parseInt((e.target as HTMLInputElement).value, 10);
   });
   ui.food.addEventListener('input', (e) => {
     flyRate = parseFloat((e.target as HTMLInputElement).value) / 200;
@@ -478,12 +478,11 @@ function update(dt: number) {
   state.genTimer += dt;
   globalTime += dt * 0.01;
 
-  ui.timer.textContent =
-    ((GEN_DURATION_MS - state.genTimer) / 1000).toFixed(1) + 's';
+  ui.timer.textContent = `${((GEN_DURATION_MS - state.genTimer) / 1000).toFixed(1)}s`;
   if (state.genTimer >= GEN_DURATION_MS) endGeneration();
 
   // Flies (Z-Axis Logic)
-  const chance = 1 - Math.pow(1 - flyRate, dt / 16);
+  const chance = 1 - (1 - flyRate) ** (dt / 16);
   if (Math.random() < chance) {
     attemptFlyCross();
   }
@@ -509,7 +508,7 @@ function update(dt: number) {
 
   ui.pop.textContent = String(activeCount);
   const avgE = activeCount ? totalE / activeCount : 0;
-  ui.bar.style.width = Math.min(100, (avgE / STARTING_ENERGY) * 100) + '%';
+  ui.bar.style.width = `${Math.min(100, (avgE / STARTING_ENERGY) * 100)}%`;
   ui.val.textContent = avgE.toFixed(0);
 
   if (activeCount === 0 && state.genTimer > 1000) endGeneration();
@@ -605,7 +604,7 @@ function updateCrawl(a: Agent, dt: number) {
   }
 
   // Decision: Drop
-  const dropProb = 1 - Math.pow(1 - a.genome.dropRate, dt / 16);
+  const dropProb = 1 - (1 - a.genome.dropRate) ** (dt / 16);
   if (Math.random() < dropProb) {
     a.state = 'falling';
     a.dropStartPos = { x: a.x, y: a.y };
@@ -739,7 +738,7 @@ function distToSegment(
   const dot = A * C + B * D;
   const len_sq = C * C + D * D;
   let param = -1;
-  if (len_sq != 0) param = dot / len_sq;
+  if (len_sq !== 0) param = dot / len_sq;
   let xx: number, yy: number;
   if (param < 0) {
     xx = x1;
@@ -757,7 +756,7 @@ function distToSegment(
 }
 
 // --- Render ---
-function loop(timestamp: number) {
+function loop(_timestamp: number) {
   let steps = 1;
   if (simSpeed >= 10) steps = 5;
   if (simSpeed >= 100) steps = 20;
