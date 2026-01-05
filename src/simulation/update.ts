@@ -1,4 +1,4 @@
-import type { Agent, Line, SimulationControls, SimulationState } from '../types';
+import type { Agent, Line, SilkType, SimulationControls, SimulationState } from '../types';
 import type { Config } from '../config';
 import { distToSegment, getIntersection } from '../geometry';
 import { getSilkProfile } from './lifecycle';
@@ -21,7 +21,7 @@ interface Fly {
 interface ImpactHit {
   line: Line;
   point: { x: number; y: number };
-  source: 'frame' | 'agent';
+  source: 'agent';
 }
 
 export function updateTick(
@@ -42,6 +42,10 @@ export function updateTick(
   let totalEnergy = 0;
 
   state.agents.forEach((agent) => {
+    agent.fliesCaught = agent.fliesCaught
+      .map((fly) => ({ ...fly, ageMs: fly.ageMs + dt }))
+      .filter((fly) => fly.ageMs < 6000);
+
     if (!agent.alive) return;
     activeCount += 1;
     totalEnergy += agent.energy;
@@ -65,14 +69,14 @@ function attemptFlyCross(state: SimulationState, config: Config): void {
 
   state.agents.forEach((agent) => {
     if (!agent.alive) return;
-    const hit = findImpact(fly, agent, state.frameLines);
+    const hit = findImpact(fly, agent, state);
     if (!hit) return;
 
     const captured = resolveImpact(agent, hit, fly, state);
     if (captured) {
       agent.score += 1;
       agent.energy = Math.min(agent.energy + config.gainFly, config.startingEnergy * 3);
-      agent.fliesCaught.push(hit.point);
+      agent.fliesCaught.push({ ...hit.point, ageMs: 0 });
       if (agent.fliesCaught.length > config.maxFliesPerAgent) agent.fliesCaught.shift();
     }
   });
@@ -103,31 +107,64 @@ function createFly(state: SimulationState): Fly {
   return { start, end, heading, mass, speed, energy };
 }
 
-function findImpact(fly: Fly, agent: Agent, frameLines: Line[]): ImpactHit | null {
+function clipToViewport(fly: Fly, state: SimulationState): { start: { x: number; y: number }; end: { x: number; y: number } } | null {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = fly.end.x - fly.start.x;
+  const dy = fly.end.y - fly.start.y;
+  const p = [-dx, dx, -dy, dy];
+  const q = [fly.start.x, state.width - fly.start.x, fly.start.y, state.height - fly.start.y];
+
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) {
+      if (q[i] < 0) return null;
+    } else {
+      const r = q[i] / p[i];
+      if (p[i] < 0) {
+        if (r > t1) return null;
+        if (r > t0) t0 = r;
+      } else {
+        if (r < t0) return null;
+        if (r < t1) t1 = r;
+      }
+    }
+  }
+
+  if (t0 > t1) return null;
+  const sx = fly.start.x + t0 * dx;
+  const sy = fly.start.y + t0 * dy;
+  const ex = fly.start.x + t1 * dx;
+  const ey = fly.start.y + t1 * dy;
+  return { start: { x: sx, y: sy }, end: { x: ex, y: ey } };
+}
+
+function findImpact(fly: Fly, agent: Agent, state: SimulationState): ImpactHit | null {
+  const clipped = clipToViewport(fly, state);
+  if (!clipped) return null;
+
   let closest: ImpactHit | null = null;
   let minDist = Infinity;
 
-  const checkLine = (line: Line, source: 'frame' | 'agent') => {
+  const checkLine = (line: Line) => {
     const intersection = getIntersection(
-      fly.start.x,
-      fly.start.y,
-      fly.end.x,
-      fly.end.y,
+      clipped.start.x,
+      clipped.start.y,
+      clipped.end.x,
+      clipped.end.y,
       line.x1,
       line.y1,
       line.x2,
       line.y2,
     );
     if (!intersection) return;
-    const dist = Math.hypot(intersection.x - fly.start.x, intersection.y - fly.start.y);
+    const dist = Math.hypot(intersection.x - clipped.start.x, intersection.y - clipped.start.y);
     if (dist < minDist) {
       minDist = dist;
-      closest = { line, point: intersection, source };
+      closest = { line, point: intersection, source: 'agent' };
     }
   };
 
-  frameLines.forEach((line) => checkLine(line, 'frame'));
-  agent.lines.forEach((line) => checkLine(line, 'agent'));
+  agent.lines.forEach((line) => checkLine(line));
   return closest;
 }
 
@@ -145,6 +182,19 @@ function computeSupportCapacity(agent: Agent, state: SimulationState, point: { x
     );
     return total + (line.strength * 1200 + line.tension * 450 + line.extensibility * 400) * lengthFactor;
   }, 0);
+}
+
+function isCrowded(line: Line, agent: Agent, state: SimulationState): boolean {
+  if (agent.lines.length > 220) return true;
+  const bottomLimit = state.height * 0.9;
+  if (line.y1 > bottomLimit && line.y2 > bottomLimit) return true;
+
+  const mid = { x: (line.x1 + line.x2) * 0.5, y: (line.y1 + line.y2) * 0.5 };
+  const nearby = [...state.frameLines, ...agent.lines].some((existing) => {
+    const d = distToSegment(mid.x, mid.y, existing.x1, existing.y1, existing.x2, existing.y2);
+    return d < 6;
+  });
+  return nearby;
 }
 
 function resolveImpact(
@@ -172,10 +222,6 @@ function resolveImpact(
 
   const survives = residualEnergy <= totalCapacity;
   const caught = survives && Math.random() < stickProbability;
-
-  if (!survives && hit.source === 'agent') {
-    agent.lines = agent.lines.filter((line) => line.id !== hit.line.id);
-  }
 
   if (!caught && survives && hit.line.type === 'capture') {
     hit.line.tension = Math.max(0, hit.line.tension - 0.05);
@@ -258,9 +304,22 @@ function updateCrawl(
   if (Math.random() < dropProb) {
     agent.state = 'falling';
     agent.dropStartPos = { x: agent.x, y: agent.y };
-    agent.vy = 2.0;
-    agent.vx = agent.direction * (Math.random() * agent.genome.glide);
-    if (Math.random() < 0.2) agent.vx *= -1;
+
+    const center = { x: state.width * 0.5, y: state.height * 0.5 };
+    const toHub = { x: center.x - agent.x, y: center.y - agent.y };
+    const len = Math.max(1, Math.hypot(toHub.x, toHub.y));
+    const radial = { x: toHub.x / len, y: toHub.y / len };
+    const tangential = { x: -radial.y, y: radial.x };
+    const radialFactor = 0.35 * agent.genome.radialPreference;
+    const spiralFactor = 0.6 + agent.genome.spiralDrift * 0.6;
+    const glideGain = 1 + agent.genome.glide * 0.5;
+
+    const vxBase = radial.x * radialFactor + tangential.x * spiralFactor;
+    const vyBase = radial.y * radialFactor + tangential.y * spiralFactor;
+    const jitter = (Math.random() - 0.5) * 0.3;
+
+    agent.vx = (vxBase + jitter) * glideGain * 3;
+    agent.vy = (vyBase + jitter) * glideGain * 2.4;
     agent.energy -= config.costDropStart;
   }
 }
@@ -271,6 +330,11 @@ function updateFall(
   config: Config,
   dt: number,
 ): void {
+  const gravity = 0.3 * agent.genome.gravityScale;
+  agent.vy += gravity * (dt / 16);
+  agent.vx *= 0.996;
+  agent.vy *= 0.999;
+
   const nextX = agent.x + agent.vx * (dt / 16);
   const nextY = agent.y + agent.vy * (dt / 16);
 
@@ -309,6 +373,15 @@ function updateFall(
   checkList(agent.lines, 4);
 
   if (!hit) {
+    const hub = { x: state.width * 0.5, y: state.height * 0.5 };
+    const distToHub = distToSegment(hub.x, hub.y, agent.x, agent.y, nextX, nextY);
+    if (distToHub < 18) {
+      hit = { idx: -1, x: hub.x, y: hub.y };
+      minT = distToHub;
+    }
+  }
+
+  if (!hit) {
     if (nextY >= state.height) hit = { idx: 2, x: nextX, y: state.height };
     else if (nextX <= 0) hit = { idx: 3, x: 0, y: nextY };
     else if (nextX >= state.width) hit = { idx: 1, x: state.width, y: nextY };
@@ -319,12 +392,14 @@ function updateFall(
     const endIsFrame = hit.idx < 4;
     const sameSide = startIsFrame && endIsFrame && agent.currentLineIdx === hit.idx;
 
+    let attachIdx = hit.idx;
+
     if (!sameSide && agent.dropStartPos) {
-      const silkType = startIsFrame || endIsFrame ? 'radial' : 'capture';
+      const silkType: SilkType = startIsFrame || endIsFrame || hit.idx === -1 ? 'radial' : 'capture';
       const silkProfile = getSilkProfile(silkType);
       const lineColor =
         silkType === 'capture' ? agent.webColor : agent.webColor.replace(/0\.4\)$/, '0.7)');
-      agent.lines.push({
+      const newLine: Line = {
         ...silkProfile,
         x1: agent.dropStartPos.x,
         y1: agent.dropStartPos.y,
@@ -333,15 +408,22 @@ function updateFall(
         id: agent.lines.length,
         color: lineColor,
         type: silkType,
-      });
+      };
+      const crowded = hit.idx !== -1 && isCrowded(newLine, agent, state);
+      if (!crowded) {
+        agent.lines.push(newLine);
+        attachIdx = 4 + newLine.id;
+      }
     }
 
     agent.state = 'crawling';
     agent.x = hit.x;
     agent.y = hit.y;
-    agent.currentLineIdx = hit.idx;
+    if (attachIdx < 0) attachIdx = agent.currentLineIdx;
+    agent.currentLineIdx = attachIdx;
 
-    const line = hit.idx < 4 ? state.frameLines[hit.idx] : agent.lines[hit.idx - 4];
+    const baseLine = attachIdx < 4 ? state.frameLines[attachIdx] : agent.lines[attachIdx - 4];
+    const line = baseLine ?? state.frameLines[0];
     const len = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
     const dist = Math.hypot(agent.x - line.x1, agent.y - line.y1);
     agent.t = len > 0 ? dist / len : 0;

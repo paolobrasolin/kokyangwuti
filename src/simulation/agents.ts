@@ -11,6 +11,9 @@ export function mutate(genome: Genome): Genome {
   if (Math.random() < 0.4) next.glide = clamp(next.glide + (Math.random() - 0.5) * 0.5, 0, 5);
   if (Math.random() < 0.4) next.speed = clamp(next.speed + (Math.random() - 0.5) * 0.2, 0.5, 3);
   if (Math.random() < 0.4) next.bias = clamp(next.bias + (Math.random() - 0.5) * 0.2, 0, 1);
+  if (Math.random() < 0.4) next.radialPreference = clamp(next.radialPreference + (Math.random() - 0.5) * 0.3, 0, 1);
+  if (Math.random() < 0.4) next.spiralDrift = clamp(next.spiralDrift + (Math.random() - 0.5) * 0.3, 0, 1.5);
+  if (Math.random() < 0.4) next.gravityScale = clamp(next.gravityScale + (Math.random() - 0.5) * 0.4, 0.4, 1.8);
   return next;
 }
 

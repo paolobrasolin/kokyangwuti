@@ -23,6 +23,9 @@ export interface Genome {
   glide: number;
   speed: number;
   bias: number;
+  radialPreference: number;
+  spiralDrift: number;
+  gravityScale: number;
 }
 
 export interface Agent {
@@ -41,7 +44,7 @@ export interface Agent {
   vx: number;
   vy: number;
   lines: Line[];
-  fliesCaught: Array<{ x: number; y: number }>;
+  fliesCaught: Array<{ x: number; y: number; ageMs: number }>;
   color: string;
   webColor: string;
   legPhase: number;

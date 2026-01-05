@@ -14,8 +14,6 @@ export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): v
   });
 
   snapshot.agents.forEach((agent) => {
-    if (!agent.alive) return;
-
     agent.lines.forEach((line) => {
       ctx.beginPath();
       ctx.moveTo(line.x1, line.y1);
@@ -27,10 +25,16 @@ export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): v
 
     ctx.fillStyle = '#ffaa00';
     agent.fliesCaught.forEach((fly) => {
+      const alpha = Math.max(0, 1 - fly.ageMs / 6000);
+      ctx.save();
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
       ctx.arc(fly.x, fly.y, 1.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     });
+
+    if (!agent.alive) return;
 
     if (agent.state === 'falling' && agent.dropStartPos) {
       ctx.strokeStyle = agent.webColor;

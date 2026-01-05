@@ -86,7 +86,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow2.className = 'stat-row';
   const dnaLabel2 = document.createElement('span');
   dnaLabel2.className = 'stat-label';
-  dnaLabel2.textContent = 'Glide Factor:';
+  dnaLabel2.textContent = 'Radial Pref:';
   const dnaVal2 = document.createElement('span');
   dnaVal2.id = 'dna-speed';
   dnaVal2.className = 'stat-val';
@@ -99,7 +99,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow3.className = 'stat-row';
   const dnaLabel3 = document.createElement('span');
   dnaLabel3.className = 'stat-label';
-  dnaLabel3.textContent = 'Vertical Bias:';
+  dnaLabel3.textContent = 'Spiral Drift:';
   const dnaVal3 = document.createElement('span');
   dnaVal3.id = 'dna-bias';
   dnaVal3.className = 'stat-val';
