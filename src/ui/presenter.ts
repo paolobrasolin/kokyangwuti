@@ -12,6 +12,8 @@ export function renderUI(ui: UIRefs, stats: UiStats): void {
   ui.dnaDrop.textContent = stats.bestGenome.dropRate.toFixed(3);
   ui.dnaSpeed.textContent = stats.bestGenome.radialPreference.toFixed(2);
   ui.dnaBias.textContent = stats.bestGenome.spiralDrift.toFixed(2);
+  ui.dnaJump.textContent = stats.bestGenome.jumpPower.toFixed(2);
+  ui.dnaMass.textContent = stats.bestGenome.bodyMass.toFixed(2);
   const bestFitness = Number.isFinite(stats.bestFitness) ? stats.bestFitness : 0;
   ui.bestFit.textContent = bestFitness.toFixed(0);
   ui.speedBtn.textContent = `Speed: ${stats.simSpeed}x`;

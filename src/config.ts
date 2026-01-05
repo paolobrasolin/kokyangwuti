@@ -24,6 +24,8 @@ export const BASE_GENOME: Genome = {
   radialPreference: 0.6,
   spiralDrift: 0.25,
   gravityScale: 1.0,
+  jumpPower: 0.6,
+  bodyMass: 1.0,
 };
 
 export type Config = typeof CONFIG;

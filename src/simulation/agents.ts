@@ -14,6 +14,8 @@ export function mutate(genome: Genome): Genome {
   if (Math.random() < 0.4) next.radialPreference = clamp(next.radialPreference + (Math.random() - 0.5) * 0.3, 0, 1);
   if (Math.random() < 0.4) next.spiralDrift = clamp(next.spiralDrift + (Math.random() - 0.5) * 0.3, 0, 1.5);
   if (Math.random() < 0.4) next.gravityScale = clamp(next.gravityScale + (Math.random() - 0.5) * 0.4, 0.4, 1.8);
+  if (Math.random() < 0.4) next.jumpPower = clamp(next.jumpPower + (Math.random() - 0.5) * 0.4, 0, 2.5);
+  if (Math.random() < 0.4) next.bodyMass = clamp(next.bodyMass + (Math.random() - 0.5) * 0.3, 0.6, 1.8);
   return next;
 }
 
@@ -29,7 +31,7 @@ export function createAgent(
     id,
     genome,
     alive: true,
-    energy: config.startingEnergy,
+    energy: config.startingEnergy * genome.bodyMass,
     score: 0,
     x: startX,
     y: 0,

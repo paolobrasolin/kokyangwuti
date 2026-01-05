@@ -108,6 +108,32 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow3.appendChild(dnaVal3);
   dnaDisplay.appendChild(dnaRow3);
 
+  const dnaRow4 = document.createElement('div');
+  dnaRow4.className = 'stat-row';
+  const dnaLabel4 = document.createElement('span');
+  dnaLabel4.className = 'stat-label';
+  dnaLabel4.textContent = 'Jump Power:';
+  const dnaVal4 = document.createElement('span');
+  dnaVal4.id = 'dna-jump';
+  dnaVal4.className = 'stat-val';
+  dnaVal4.textContent = '--';
+  dnaRow4.appendChild(dnaLabel4);
+  dnaRow4.appendChild(dnaVal4);
+  dnaDisplay.appendChild(dnaRow4);
+
+  const dnaRow5 = document.createElement('div');
+  dnaRow5.className = 'stat-row';
+  const dnaLabel5 = document.createElement('span');
+  dnaLabel5.className = 'stat-label';
+  dnaLabel5.textContent = 'Body Mass:';
+  const dnaVal5 = document.createElement('span');
+  dnaVal5.id = 'dna-mass';
+  dnaVal5.className = 'stat-val';
+  dnaVal5.textContent = '--';
+  dnaRow5.appendChild(dnaLabel5);
+  dnaRow5.appendChild(dnaVal5);
+  dnaDisplay.appendChild(dnaRow5);
+
   uiLayer.appendChild(dnaDisplay);
 
   const controlGroup1 = document.createElement('div');
@@ -183,6 +209,8 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
     dnaDrop: dnaVal1,
     dnaSpeed: dnaVal2,
     dnaBias: dnaVal3,
+    dnaJump: dnaVal4,
+    dnaMass: dnaVal5,
     bestFit: val4,
     popInput,
     food: foodInput,

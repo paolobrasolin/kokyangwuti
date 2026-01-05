@@ -64,9 +64,10 @@ export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): v
       ctx.rotate(angle);
     }
 
+    const bodyScale = Math.min(1.4, 0.7 + agent.genome.bodyMass * 0.4);
     ctx.fillStyle = agent.color;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 6, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 6 * bodyScale, 3 * bodyScale, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = agent.color;

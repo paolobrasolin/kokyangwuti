@@ -26,6 +26,8 @@ export interface Genome {
   radialPreference: number;
   spiralDrift: number;
   gravityScale: number;
+  jumpPower: number;
+  bodyMass: number;
 }
 
 export interface Agent {
@@ -81,6 +83,8 @@ export interface UIRefs {
   dnaDrop: HTMLElement;
   dnaSpeed: HTMLElement;
   dnaBias: HTMLElement;
+  dnaJump: HTMLElement;
+  dnaMass: HTMLElement;
   bestFit: HTMLElement;
   popInput: HTMLInputElement;
   food: HTMLInputElement;

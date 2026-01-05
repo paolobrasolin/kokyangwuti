@@ -50,7 +50,7 @@ export function updateTick(
     activeCount += 1;
     totalEnergy += agent.energy;
 
-    agent.energy -= config.baselineEnergyDrain * (dt / 16);
+    agent.energy -= config.baselineEnergyDrain * (dt / 16) * agent.genome.bodyMass;
     if (agent.energy <= 0) {
       agent.alive = false;
       agent.energy = 0;
@@ -255,7 +255,8 @@ function updateCrawl(
   agent.t += tStep * agent.direction;
   agent.x = line.x1 + (line.x2 - line.x1) * agent.t;
   agent.y = line.y1 + (line.y2 - line.y1) * agent.t;
-  agent.energy -= config.costCrawl * speed;
+    agent.energy -= config.costCrawl * speed * agent.genome.bodyMass;
+
 
   if (agent.t <= 0 || agent.t >= 1) {
     agent.t = agent.t <= 0 ? 0 : 1;
@@ -313,14 +314,15 @@ function updateCrawl(
     const radialFactor = 0.35 * agent.genome.radialPreference;
     const spiralFactor = 0.6 + agent.genome.spiralDrift * 0.6;
     const glideGain = 1 + agent.genome.glide * 0.5;
+    const jumpGain = 1 + agent.genome.jumpPower;
 
     const vxBase = radial.x * radialFactor + tangential.x * spiralFactor;
     const vyBase = radial.y * radialFactor + tangential.y * spiralFactor;
     const jitter = (Math.random() - 0.5) * 0.3;
 
-    agent.vx = (vxBase + jitter) * glideGain * 3;
-    agent.vy = (vyBase + jitter) * glideGain * 2.4;
-    agent.energy -= config.costDropStart;
+    agent.vx = (vxBase + jitter) * glideGain * jumpGain * 3;
+    agent.vy = (vyBase + jitter) * glideGain * jumpGain * 2.4;
+    agent.energy -= config.costDropStart * agent.genome.bodyMass;
   }
 }
 
@@ -338,7 +340,7 @@ function updateFall(
   const nextX = agent.x + agent.vx * (dt / 16);
   const nextY = agent.y + agent.vy * (dt / 16);
 
-  agent.energy -= config.costDropPixel * Math.hypot(agent.vx, agent.vy);
+  agent.energy -= config.costDropPixel * Math.hypot(agent.vx, agent.vy) * agent.genome.bodyMass;
 
   let hit: { idx: number; x: number; y: number } | null = null;
   let minT = Infinity;
