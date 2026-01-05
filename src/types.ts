@@ -1,10 +1,21 @@
-export interface Line {
+export type SilkType = 'frame' | 'radial' | 'capture';
+
+export interface SilkProfile {
+  strength: number;
+  extensibility: number;
+  damping: number;
+  adhesion: number;
+  tension: number;
+}
+
+export interface Line extends SilkProfile {
   x1: number;
   y1: number;
   x2: number;
   y2: number;
   id: number;
   color: string;
+  type: SilkType;
 }
 
 export interface Genome {

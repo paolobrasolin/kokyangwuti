@@ -9,18 +9,18 @@ export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): v
     ctx.beginPath();
     ctx.moveTo(line.x1, line.y1);
     ctx.lineTo(line.x2, line.y2);
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = line.color;
     ctx.stroke();
   });
 
   snapshot.agents.forEach((agent) => {
     if (!agent.alive) return;
 
-    ctx.lineWidth = 1;
     agent.lines.forEach((line) => {
       ctx.beginPath();
       ctx.moveTo(line.x1, line.y1);
       ctx.lineTo(line.x2, line.y2);
+      ctx.lineWidth = line.type === 'capture' ? 1 : 1.5;
       ctx.strokeStyle = line.color;
       ctx.stroke();
     });
