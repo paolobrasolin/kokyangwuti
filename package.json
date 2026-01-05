@@ -20,5 +20,15 @@
     "@testing-library/jest-dom": "^6.9.1",
     "jsdom": "^27.3.0",
     "typescript": "^5.9.3"
+  },
+  "supportedArchitectures": {
+    "os": [
+      "darwin",
+      "linux"
+    ],
+    "cpu": [
+      "arm64",
+      "x64"
+    ]
   }
 }
