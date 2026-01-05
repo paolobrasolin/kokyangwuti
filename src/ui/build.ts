@@ -134,6 +134,17 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow5.appendChild(dnaVal5);
   dnaDisplay.appendChild(dnaRow5);
 
+  const chartCanvas = document.createElement('canvas');
+  chartCanvas.id = 'genome-chart';
+  chartCanvas.width = 256;
+  chartCanvas.height = 256;
+  chartCanvas.style.marginTop = '8px';
+  chartCanvas.style.width = '100%';
+  chartCanvas.style.maxWidth = '256px';
+  chartCanvas.style.height = '256px';
+  chartCanvas.style.maxHeight = '256px';
+  dnaDisplay.appendChild(chartCanvas);
+
   uiLayer.appendChild(dnaDisplay);
 
   const controlGroup1 = document.createElement('div');
@@ -218,6 +229,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
     log: logConsole,
     uiLayer,
     toggleBtn,
+    genomeChart: chartCanvas,
   };
 
   return { ui: uiRefs, canvas };

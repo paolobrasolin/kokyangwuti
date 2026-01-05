@@ -23,5 +23,6 @@ export function createEvolutionState(): EvolutionState {
     generation: 1,
     bestFitness: -Infinity,
     bestGenome: { ...BASE_GENOME },
+    history: [{ generation: 1, genome: { ...BASE_GENOME } }],
   };
 }

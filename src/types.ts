@@ -30,6 +30,11 @@ export interface Genome {
   bodyMass: number;
 }
 
+export interface GenomeSnapshot {
+  generation: number;
+  genome: Genome;
+}
+
 export interface Agent {
   id: number;
   genome: Genome;
@@ -56,6 +61,7 @@ export interface EvolutionState {
   generation: number;
   bestFitness: number;
   bestGenome: Genome;
+  history: GenomeSnapshot[];
 }
 
 export interface SimulationState {
@@ -92,6 +98,7 @@ export interface UIRefs {
   log: HTMLElement;
   uiLayer: HTMLElement;
   toggleBtn: HTMLButtonElement;
+  genomeChart: HTMLCanvasElement;
 }
 
 export interface UiStats {
@@ -105,6 +112,7 @@ export interface UiStats {
   flyRate: number;
   targetPopulation: number;
   maxEnergy: number;
+  genomeHistory: GenomeSnapshot[];
 }
 
 export interface RenderSnapshot {

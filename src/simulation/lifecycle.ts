@@ -122,6 +122,9 @@ export function endGeneration(
     evolution.bestGenome = { ...currentBest.genome };
   }
 
+  evolution.history.push({ generation: evolution.generation, genome: { ...evolution.bestGenome } });
+  if (evolution.history.length > 160) evolution.history.shift();
+
   evolution.generation += 1;
 
   return {

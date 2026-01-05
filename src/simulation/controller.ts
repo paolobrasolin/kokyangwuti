@@ -84,6 +84,7 @@ export function createSimulationController({
       flyRate: controls.flyRate,
       targetPopulation: controls.targetPopulation,
       maxEnergy: config.startingEnergy,
+      genomeHistory: evolution.history,
     };
   }
 
