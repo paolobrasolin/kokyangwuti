@@ -1,0 +1,4 @@
+- [ ] scrape SOTA abt arachnids' biomechanics and silk weaving
+- [ ] feed everything into big belly robot
+- [ ] extract minimal principles to found simulation
+- [ ] synthesis of minimal principles to feed into small belly robot that writes code
