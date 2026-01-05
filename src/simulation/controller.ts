@@ -28,6 +28,7 @@ export function createSimulationController({
     simSpeed: SPEED_STEPS[0],
     flyRate: config.defaultFlyRate,
     targetPopulation: config.defaultPopulation,
+    immortality: false,
   };
 
   let restartHandle: number | null = null;
@@ -62,8 +63,10 @@ export function createSimulationController({
 
     if (state.active) {
       const remainingMs = Math.max(0, config.genDurationMs - state.genTimer);
-      if (state.genTimer >= config.genDurationMs) end();
-      if (metrics.activeCount === 0 && state.genTimer > 1000) end();
+      if (!controls.immortality) {
+        if (state.genTimer >= config.genDurationMs) end();
+        if (metrics.activeCount === 0 && state.genTimer > 1000) end();
+      }
       return buildStats(metrics.activeCount, metrics.totalEnergy, remainingMs);
     }
 
@@ -85,6 +88,7 @@ export function createSimulationController({
       targetPopulation: controls.targetPopulation,
       maxEnergy: config.startingEnergy,
       genomeHistory: evolution.history,
+      immortality: controls.immortality,
     };
   }
 
@@ -113,7 +117,13 @@ export function createSimulationController({
     controls.flyRate = value;
   }
 
+  function toggleImmortality(): boolean {
+    controls.immortality = !controls.immortality;
+    return controls.immortality;
+  }
+
   function resize(width: number, height: number): void {
+
     resizeSimulation(state, width, height);
     if (state.frameLines.length) {
       state.frameLines = buildFrameLines(width, height);
@@ -143,5 +153,6 @@ export function createSimulationController({
     getSimSpeed,
     getControls,
     getState,
+    toggleImmortality,
   };
 }

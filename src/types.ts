@@ -78,6 +78,7 @@ export interface SimulationControls {
   simSpeed: number;
   flyRate: number;
   targetPopulation: number;
+  immortality: boolean;
 }
 
 export interface UIRefs {
@@ -99,6 +100,7 @@ export interface UIRefs {
   uiLayer: HTMLElement;
   toggleBtn: HTMLButtonElement;
   genomeChart: HTMLCanvasElement;
+  immortalBtn: HTMLButtonElement;
 }
 
 export interface UiStats {
@@ -113,6 +115,7 @@ export interface UiStats {
   targetPopulation: number;
   maxEnergy: number;
   genomeHistory: GenomeSnapshot[];
+  immortality: boolean;
 }
 
 export interface RenderSnapshot {

@@ -50,15 +50,20 @@ export function updateTick(
     activeCount += 1;
     totalEnergy += agent.energy;
 
-    agent.energy -= config.baselineEnergyDrain * (dt / 16) * agent.genome.bodyMass;
+    const drain = config.baselineEnergyDrain * (dt / 16) * agent.genome.bodyMass;
+    agent.energy = controls.immortality ? Math.max(1, agent.energy - drain) : agent.energy - drain;
     if (agent.energy <= 0) {
-      agent.alive = false;
-      agent.energy = 0;
-      return;
+      if (controls.immortality) {
+        agent.energy = 1;
+      } else {
+        agent.alive = false;
+        agent.energy = 0;
+        return;
+      }
     }
 
-    if (agent.state === 'crawling') updateCrawl(agent, state, config, dt);
-    else updateFall(agent, state, config, dt);
+    if (agent.state === 'crawling') updateCrawl(agent, state, config, controls, dt);
+    else updateFall(agent, state, config, controls, dt);
   });
 
   return { activeCount, totalEnergy, timerMs: state.genTimer };
@@ -239,8 +244,10 @@ function updateCrawl(
   agent: Agent,
   state: SimulationState,
   config: Config,
+  controls: SimulationControls,
   dt: number,
 ): void {
+
   const line =
     agent.currentLineIdx < 4
       ? state.frameLines[agent.currentLineIdx]
@@ -255,8 +262,8 @@ function updateCrawl(
   agent.t += tStep * agent.direction;
   agent.x = line.x1 + (line.x2 - line.x1) * agent.t;
   agent.y = line.y1 + (line.y2 - line.y1) * agent.t;
-    agent.energy -= config.costCrawl * speed * agent.genome.bodyMass;
-
+  agent.energy -= config.costCrawl * speed * agent.genome.bodyMass;
+  if (controls.immortality) agent.energy = Math.max(1, agent.energy);
 
   if (agent.t <= 0 || agent.t >= 1) {
     agent.t = agent.t <= 0 ? 0 : 1;
@@ -330,6 +337,7 @@ function updateFall(
   agent: Agent,
   state: SimulationState,
   config: Config,
+  controls: SimulationControls,
   dt: number,
 ): void {
   const gravity = 0.3 * agent.genome.gravityScale;
@@ -341,6 +349,7 @@ function updateFall(
   const nextY = agent.y + agent.vy * (dt / 16);
 
   agent.energy -= config.costDropPixel * Math.hypot(agent.vx, agent.vy) * agent.genome.bodyMass;
+  if (controls.immortality) agent.energy = Math.max(1, agent.energy);
 
   let hit: { idx: number; x: number; y: number } | null = null;
   let minT = Infinity;

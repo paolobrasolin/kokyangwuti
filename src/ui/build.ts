@@ -182,6 +182,11 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   speedBtn.textContent = 'Speed: 1x';
   uiLayer.appendChild(speedBtn);
 
+  const immortalBtn = document.createElement('button');
+  immortalBtn.id = 'immortal-btn';
+  immortalBtn.textContent = 'Immortal: Off';
+  uiLayer.appendChild(immortalBtn);
+
   const statRow4 = document.createElement('div');
   statRow4.className = 'stat-row';
   const fitnessLabel = document.createElement('span');
@@ -230,6 +235,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
     uiLayer,
     toggleBtn,
     genomeChart: chartCanvas,
+    immortalBtn,
   };
 
   return { ui: uiRefs, canvas };

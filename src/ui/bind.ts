@@ -5,6 +5,7 @@ interface UiHandlers {
   onPopulationChange: (value: number) => void;
   onFlyRateChange: (value: number) => void;
   onTogglePanel: (visible: boolean) => void;
+  onImmortalToggle: () => boolean;
 }
 
 export function bindUI(ui: UIRefs, handlers: UiHandlers): void {
@@ -27,5 +28,10 @@ export function bindUI(ui: UIRefs, handlers: UiHandlers): void {
     const willShow = ui.uiLayer.style.opacity === '0';
     ui.uiLayer.style.opacity = willShow ? '1' : '0';
     handlers.onTogglePanel(willShow);
+  });
+
+  ui.immortalBtn.addEventListener('click', () => {
+    const on = handlers.onImmortalToggle();
+    ui.immortalBtn.textContent = on ? 'Immortal: On' : 'Immortal: Off';
   });
 }

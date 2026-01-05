@@ -33,6 +33,7 @@ export function renderUI(ui: UIRefs, stats: UiStats): void {
   ui.speedBtn.textContent = `Speed: ${stats.simSpeed}x`;
   ui.popInput.value = String(stats.targetPopulation);
   ui.food.value = String(Math.round(stats.flyRate * 200));
+  ui.immortalBtn.textContent = stats.immortality ? 'Immortal: On' : 'Immortal: Off';
 
   renderGenomeChart(ui.genomeChart, stats.genomeHistory);
 }

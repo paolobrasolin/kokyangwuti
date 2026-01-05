@@ -35,6 +35,7 @@ bindUI(ui, {
   onPopulationChange: (value) => controller.setPopulation(value),
   onFlyRateChange: (value) => controller.setFlyRate(value),
   onTogglePanel: () => {},
+  onImmortalToggle: () => controller.toggleImmortality(),
 });
 
 controller.start();
