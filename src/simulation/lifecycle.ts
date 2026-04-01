@@ -2,7 +2,6 @@ import type {
   Agent,
   EvolutionState,
   Genome,
-  Line,
   SilkProfile,
   SilkType,
   SimulationControls,
@@ -10,6 +9,7 @@ import type {
 } from '../types';
 import type { Config } from '../config';
 import { createAgent, mutate } from './agents';
+import { buildFrame, createWorld } from '../physics/world';
 
 const SILK_PROFILES: Record<SilkType, SilkProfile> = {
   frame: {
@@ -39,41 +39,9 @@ export function getSilkProfile(type: SilkType): SilkProfile {
   return { ...SILK_PROFILES[type] };
 }
 
-export function buildFrameLines(width: number, height: number): Line[] {
-  const frameColor = 'rgba(50,50,80,0.3)';
-  return [
-    { ...getSilkProfile('frame'), x1: 0, y1: 0, x2: width, y2: 0, id: 0, color: frameColor, type: 'frame' },
-    {
-      ...getSilkProfile('frame'),
-      x1: width,
-      y1: 0,
-      x2: width,
-      y2: height,
-      id: 1,
-      color: frameColor,
-      type: 'frame',
-    },
-    {
-      ...getSilkProfile('frame'),
-      x1: width,
-      y1: height,
-      x2: 0,
-      y2: height,
-      id: 2,
-      color: frameColor,
-      type: 'frame',
-    },
-    {
-      ...getSilkProfile('frame'),
-      x1: 0,
-      y1: height,
-      x2: 0,
-      y2: 0,
-      id: 3,
-      color: frameColor,
-      type: 'frame',
-    },
-  ];
+export function buildFrameWorld(state: SimulationState): void {
+  state.world = createWorld();
+  state.frameThreadIds = buildFrame(state.world, state.width, state.height);
 }
 
 export function startGeneration(
@@ -84,7 +52,8 @@ export function startGeneration(
 ): { generation: number; genome: Genome } {
   state.genTimer = 0;
   state.active = true;
-  state.frameLines = buildFrameLines(state.width, state.height);
+
+  buildFrameWorld(state);
 
   state.agents = [];
   for (let i = 0; i < controls.targetPopulation; i++) {

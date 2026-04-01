@@ -1,5 +1,6 @@
 import type { Agent, Genome, SimulationState } from '../types';
 import type { Config } from '../config';
+import { findNearestSpring } from '../physics/world';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -27,6 +28,12 @@ export function createAgent(
 ): Agent {
   const startX = Math.random() * state.width;
   const hue = Math.random() * 360;
+
+  // Find the nearest frame spring to the start position (top edge)
+  const nearest = findNearestSpring(state.world, startX, 0, -1);
+  const springId = nearest ? nearest.springId : 0;
+  const tOnSpring = nearest ? nearest.t : (state.width > 0 ? startX / state.width : 0);
+
   return {
     id,
     genome,
@@ -36,13 +43,13 @@ export function createAgent(
     x: startX,
     y: 0,
     state: 'crawling',
-    currentLineIdx: 0,
-    t: state.width > 0 ? startX / state.width : 0,
+    currentSpringId: springId,
+    tOnSpring,
     direction: Math.random() < 0.5 ? 1 : -1,
     dropStartPos: null,
     vx: 0,
     vy: 0,
-    lines: [],
+    threadIds: [],
     fliesCaught: [],
     color: `hsl(${hue}, 100%, 60%)`,
     webColor: `hsla(${hue}, 100%, 70%, 0.4)`,

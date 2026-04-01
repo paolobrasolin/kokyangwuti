@@ -1,5 +1,6 @@
 import type { EvolutionState, SimulationState } from '../types';
 import { BASE_GENOME } from '../config';
+import { createWorld } from '../physics/world';
 
 export function createSimulationState(width = 0, height = 0): SimulationState {
   return {
@@ -7,7 +8,8 @@ export function createSimulationState(width = 0, height = 0): SimulationState {
     genTimer: 0,
     width,
     height,
-    frameLines: [],
+    world: createWorld(),
+    frameThreadIds: [],
     agents: [],
     globalTime: 0,
   };

@@ -8,7 +8,7 @@ import type {
   UiStats,
 } from '../types';
 import { createEvolutionState, createSimulationState, resizeSimulation } from './state';
-import { buildFrameLines, endGeneration, startGeneration } from './lifecycle';
+import { buildFrameWorld, endGeneration, startGeneration } from './lifecycle';
 import { updateTick } from './update';
 
 interface ControllerOptions {
@@ -94,7 +94,7 @@ export function createSimulationController({
 
   function getSnapshot(): RenderSnapshot {
     return {
-      frameLines: state.frameLines,
+      world: state.world,
       agents: state.agents,
       width: state.width,
       height: state.height,
@@ -123,10 +123,9 @@ export function createSimulationController({
   }
 
   function resize(width: number, height: number): void {
-
     resizeSimulation(state, width, height);
-    if (state.frameLines.length) {
-      state.frameLines = buildFrameLines(width, height);
+    if (state.world.nodes.length > 0) {
+      buildFrameWorld(state);
     }
   }
 

@@ -1,7 +1,20 @@
-import type { Agent, Line, SilkType, SimulationControls, SimulationState } from '../types';
+import type { Agent, SilkType, SimulationControls, SimulationState } from '../types';
 import type { Config } from '../config';
 import { distToSegment, getIntersection } from '../geometry';
 import { getSilkProfile } from './lifecycle';
+import { PHYSICS } from '../physics/config';
+import { stepPhysics, applyForceToSpring } from '../physics/solver';
+import {
+  createSubdividedThread,
+  findNearestSpring,
+  findNearestFrameSpring,
+  splitFrameSpring,
+  getConnectedSprings,
+  rayVsSprings,
+  applyImpulse,
+  cleanup,
+  countAgentSprings,
+} from '../physics/world';
 
 export interface UpdateMetrics {
   activeCount: number;
@@ -18,11 +31,7 @@ interface Fly {
   energy: number;
 }
 
-interface ImpactHit {
-  line: Line;
-  point: { x: number; y: number };
-  source: 'agent';
-}
+let cleanupCounter = 0;
 
 export function updateTick(
   state: SimulationState,
@@ -37,6 +46,24 @@ export function updateTick(
 
   const chance = 1 - (1 - controls.flyRate) ** (dt / 16);
   if (Math.random() < chance) attemptFlyCross(state, config);
+
+  // Run physics solver (skip at very high speeds)
+  if (controls.simSpeed < PHYSICS.skipPhysicsSpeed) {
+    const iterations = controls.simSpeed >= PHYSICS.reducedIterationsSpeed
+      ? PHYSICS.reducedIterations
+      : PHYSICS.constraintIterations;
+
+    // Apply spider weight forces before stepping
+    for (const agent of state.agents) {
+      if (!agent.alive || agent.state !== 'crawling') continue;
+      const spring = state.world.springMap.get(agent.currentSpringId);
+      if (!spring || spring.broken) continue;
+      const weight = agent.genome.bodyMass * PHYSICS.spiderMassMultiplier;
+      applyForceToSpring(state.world, agent.currentSpringId, agent.tOnSpring, 0, weight);
+    }
+
+    stepPhysics(state.world, dt, iterations);
+  }
 
   let activeCount = 0;
   let totalEnergy = 0;
@@ -65,6 +92,13 @@ export function updateTick(
     if (agent.state === 'crawling') updateCrawl(agent, state, config, controls, dt);
     else updateFall(agent, state, config, controls, dt);
   });
+
+  // Periodic cleanup
+  cleanupCounter++;
+  if (cleanupCounter >= PHYSICS.cleanupInterval) {
+    cleanupCounter = 0;
+    cleanup(state.world);
+  }
 
   return { activeCount, totalEnergy, timerMs: state.genTimer };
 }
@@ -143,63 +177,25 @@ function clipToViewport(fly: Fly, state: SimulationState): { start: { x: number;
   return { start: { x: sx, y: sy }, end: { x: ex, y: ey } };
 }
 
+interface ImpactHit {
+  springId: number;
+  point: { x: number; y: number };
+  t: number; // parametric t on the spring
+}
+
 function findImpact(fly: Fly, agent: Agent, state: SimulationState): ImpactHit | null {
   const clipped = clipToViewport(fly, state);
   if (!clipped) return null;
 
-  let closest: ImpactHit | null = null;
-  let minDist = Infinity;
-
-  const checkLine = (line: Line) => {
-    const intersection = getIntersection(
-      clipped.start.x,
-      clipped.start.y,
-      clipped.end.x,
-      clipped.end.y,
-      line.x1,
-      line.y1,
-      line.x2,
-      line.y2,
-    );
-    if (!intersection) return;
-    const dist = Math.hypot(intersection.x - clipped.start.x, intersection.y - clipped.start.y);
-    if (dist < minDist) {
-      minDist = dist;
-      closest = { line, point: intersection, source: 'agent' };
-    }
-  };
-
-  agent.lines.forEach((line) => checkLine(line));
-  return closest;
-}
-
-function computeSupportCapacity(agent: Agent, state: SimulationState, point: { x: number; y: number }, skip: Line): number {
-  const candidates = [...state.frameLines, ...agent.lines].filter(
-    (line) => line.id !== skip.id && line.type !== 'capture',
+  const hit = rayVsSprings(
+    state.world,
+    clipped.start.x, clipped.start.y,
+    clipped.end.x, clipped.end.y,
+    agent.id,
   );
 
-  return candidates.reduce((total, line) => {
-    const d = distToSegment(point.x, point.y, line.x1, line.y1, line.x2, line.y2);
-    if (d > 35) return total;
-    const lengthFactor = Math.max(
-      0.5,
-      Math.hypot(line.x2 - line.x1, line.y2 - line.y1) / Math.max(state.width, state.height),
-    );
-    return total + (line.strength * 1200 + line.tension * 450 + line.extensibility * 400) * lengthFactor;
-  }, 0);
-}
-
-function isCrowded(line: Line, agent: Agent, state: SimulationState): boolean {
-  if (agent.lines.length > 220) return true;
-  const bottomLimit = state.height * 0.9;
-  if (line.y1 > bottomLimit && line.y2 > bottomLimit) return true;
-
-  const mid = { x: (line.x1 + line.x2) * 0.5, y: (line.y1 + line.y2) * 0.5 };
-  const nearby = [...state.frameLines, ...agent.lines].some((existing) => {
-    const d = distToSegment(mid.x, mid.y, existing.x1, existing.y1, existing.x2, existing.y2);
-    return d < 6;
-  });
-  return nearby;
+  if (!hit) return null;
+  return { springId: hit.springId, point: hit.point, t: hit.t };
 }
 
 function resolveImpact(
@@ -208,36 +204,121 @@ function resolveImpact(
   fly: Fly,
   state: SimulationState,
 ): boolean {
-  const lineVector = { x: hit.line.x2 - hit.line.x1, y: hit.line.y2 - hit.line.y1 };
+  const spring = state.world.springMap.get(hit.springId);
+  if (!spring || spring.broken) return false;
+
+  const nodeA = state.world.nodeMap.get(spring.nodeA);
+  const nodeB = state.world.nodeMap.get(spring.nodeB);
+  if (!nodeA || !nodeB) return false;
+
+  // Calculate impact angle
+  const lineVector = { x: nodeB.x - nodeA.x, y: nodeB.y - nodeA.y };
   const pathAngle = Math.atan2(fly.heading.y, fly.heading.x);
   const lineAngle = Math.atan2(lineVector.y, lineVector.x);
   const angleFactor = Math.abs(Math.sin(pathAngle - lineAngle));
-  const lineLength = Math.max(10, Math.hypot(lineVector.x, lineVector.y));
 
-  const axialCapacity = hit.line.strength * 1200 * (lineLength / Math.max(80, state.width * 0.4));
-  const stretchAllowance = hit.line.extensibility * 900 * (0.5 + angleFactor);
-  const dampingLoss = fly.energy * (0.1 + hit.line.damping * 0.55) * angleFactor;
-  const supportCapacity = computeSupportCapacity(agent, state, hit.point, hit.line);
+  // Apply impulse to the spring (visible vibration!)
+  const impulseMag = fly.mass * fly.speed * angleFactor * 0.5;
+  const flyDir = Math.hypot(fly.heading.x, fly.heading.y);
+  if (flyDir > 0) {
+    applyImpulse(
+      state.world,
+      hit.springId,
+      hit.t,
+      (fly.heading.x / flyDir) * impulseMag,
+      (fly.heading.y / flyDir) * impulseMag,
+    );
+  }
+
+  // Check if spring breaks from impulse
+  const nodeAAfter = state.world.nodeMap.get(spring.nodeA)!;
+  const nodeBAfter = state.world.nodeMap.get(spring.nodeB)!;
+  const currentLen = Math.hypot(nodeBAfter.x - nodeAAfter.x, nodeBAfter.y - nodeAAfter.y);
+  if (currentLen > spring.maxExtension) {
+    spring.broken = true;
+    return false; // fly escapes
+  }
+
+  // Damping loss
+  const dampingLoss = fly.energy * (0.1 + spring.damping * 0.55) * angleFactor;
   const residualEnergy = Math.max(0, fly.energy - dampingLoss);
+
+  // Support capacity from nearby springs
+  const supportCapacity = computeSupportCapacity(agent, state, hit.point, hit.springId);
+  const lineLength = Math.max(10, Math.hypot(lineVector.x, lineVector.y));
+  const axialCapacity = spring.stiffness * 1200 * (lineLength / Math.max(80, state.width * 0.4));
+  const stretchAllowance = (spring.maxExtension / spring.restLength - 1) * 900 * (0.5 + angleFactor);
   const totalCapacity = axialCapacity + stretchAllowance + supportCapacity;
 
-  const adhesionAssist = hit.line.adhesion * (0.6 + 0.3 * angleFactor);
-  const tensionAssist = hit.line.tension * 0.25;
+  const adhesionAssist = spring.adhesion * (0.6 + 0.3 * angleFactor);
+  const tensionAssist = 0.25 * (spring.stiffness * 0.3);
   const stickProbability = Math.min(0.98, adhesionAssist + tensionAssist);
 
   const survives = residualEnergy <= totalCapacity;
   const caught = survives && Math.random() < stickProbability;
 
-  if (!caught && survives && hit.line.type === 'capture') {
-    hit.line.tension = Math.max(0, hit.line.tension - 0.05);
-  }
-
-  if (caught && hit.line.type === 'capture') {
-    const aerodynamicLoss = fly.energy * (0.05 + hit.line.damping * 0.2);
+  if (caught && spring.type === 'capture') {
+    const aerodynamicLoss = fly.energy * (0.05 + spring.damping * 0.2);
     agent.energy = Math.max(0, agent.energy - aerodynamicLoss * 0.01);
   }
 
   return caught;
+}
+
+function computeSupportCapacity(
+  agent: Agent,
+  state: SimulationState,
+  point: { x: number; y: number },
+  skipSpringId: number,
+): number {
+  let total = 0;
+
+  for (const spring of state.world.springs) {
+    if (spring.broken || spring.id === skipSpringId) continue;
+    if (spring.ownerAgentId !== agent.id && spring.ownerAgentId !== -1) continue;
+    if (spring.type === 'capture') continue;
+
+    const nodeA = state.world.nodeMap.get(spring.nodeA);
+    const nodeB = state.world.nodeMap.get(spring.nodeB);
+    if (!nodeA || !nodeB) continue;
+
+    const d = distToSegment(point.x, point.y, nodeA.x, nodeA.y, nodeB.x, nodeB.y);
+    if (d > 35) continue;
+
+    const lengthFactor = Math.max(
+      0.5,
+      Math.hypot(nodeB.x - nodeA.x, nodeB.y - nodeA.y) / Math.max(state.width, state.height),
+    );
+    total += (spring.stiffness * 1200 + spring.stiffness * 450 + (spring.maxExtension / spring.restLength - 1) * 400) * lengthFactor;
+  }
+
+  return total;
+}
+
+function isCrowded(
+  startX: number, startY: number, endX: number, endY: number,
+  agent: Agent, state: SimulationState,
+): boolean {
+  if (countAgentSprings(state.world, agent.id) > 220) return true;
+  const bottomLimit = state.height * 0.9;
+  if (startY > bottomLimit && endY > bottomLimit) return true;
+
+  const midX = (startX + endX) * 0.5;
+  const midY = (startY + endY) * 0.5;
+
+  for (const spring of state.world.springs) {
+    if (spring.broken) continue;
+    if (spring.ownerAgentId !== agent.id && spring.ownerAgentId !== -1) continue;
+
+    const nodeA = state.world.nodeMap.get(spring.nodeA);
+    const nodeB = state.world.nodeMap.get(spring.nodeB);
+    if (!nodeA || !nodeB) continue;
+
+    const d = distToSegment(midX, midY, nodeA.x, nodeA.y, nodeB.x, nodeB.y);
+    if (d < 6) return true;
+  }
+
+  return false;
 }
 
 function updateCrawl(
@@ -247,61 +328,70 @@ function updateCrawl(
   controls: SimulationControls,
   dt: number,
 ): void {
+  const spring = state.world.springMap.get(agent.currentSpringId);
+  if (!spring || spring.broken) {
+    // Spring broke under us — find nearest spring to stand on
+    const nearest = findNearestSpring(state.world, agent.x, agent.y);
+    if (nearest) {
+      agent.currentSpringId = nearest.springId;
+      agent.tOnSpring = nearest.t;
+    } else {
+      return;
+    }
+  }
 
-  const line =
-    agent.currentLineIdx < 4
-      ? state.frameLines[agent.currentLineIdx]
-      : agent.lines[agent.currentLineIdx - 4];
+  const currentSpring = state.world.springMap.get(agent.currentSpringId)!;
+  const nodeA = state.world.nodeMap.get(currentSpring.nodeA);
+  const nodeB = state.world.nodeMap.get(currentSpring.nodeB);
+  if (!nodeA || !nodeB) return;
 
-  if (!line) return;
-
-  const len = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+  const len = Math.hypot(nodeB.x - nodeA.x, nodeB.y - nodeA.y);
   const speed = (2 + agent.genome.speed * 2) * (dt / 16);
   const tStep = len > 0 ? speed / len : 0;
 
-  agent.t += tStep * agent.direction;
-  agent.x = line.x1 + (line.x2 - line.x1) * agent.t;
-  agent.y = line.y1 + (line.y2 - line.y1) * agent.t;
+  agent.tOnSpring += tStep * agent.direction;
+
+  // Interpolate position from spring nodes
+  const clampedT = Math.max(0, Math.min(1, agent.tOnSpring));
+  agent.x = nodeA.x + (nodeB.x - nodeA.x) * clampedT;
+  agent.y = nodeA.y + (nodeB.y - nodeA.y) * clampedT;
   agent.energy -= config.costCrawl * speed * agent.genome.bodyMass;
   if (controls.immortality) agent.energy = Math.max(1, agent.energy);
 
-  if (agent.t <= 0 || agent.t >= 1) {
-    agent.t = agent.t <= 0 ? 0 : 1;
-    const px = agent.t === 0 ? line.x1 : line.x2;
-    const py = agent.t === 0 ? line.y1 : line.y2;
+  if (agent.tOnSpring <= 0 || agent.tOnSpring >= 1) {
+    agent.tOnSpring = agent.tOnSpring <= 0 ? 0 : 1;
 
-    const connected: Array<{ idx: number; startT: number; isUp?: boolean }> = [];
-    state.frameLines.forEach((frameLine, idx) => {
-      if (idx === agent.currentLineIdx) return;
-      const d1 = Math.hypot(frameLine.x1 - px, frameLine.y1 - py);
-      const d2 = Math.hypot(frameLine.x2 - px, frameLine.y2 - py);
-      if (d1 < 1) connected.push({ idx, startT: 0 });
-      else if (d2 < 1) connected.push({ idx, startT: 1 });
-    });
-    agent.lines.forEach((privateLine, i) => {
-      const realIdx = i + 4;
-      if (realIdx === agent.currentLineIdx) return;
-      const d1 = Math.hypot(privateLine.x1 - px, privateLine.y1 - py);
-      const d2 = Math.hypot(privateLine.x2 - px, privateLine.y2 - py);
-      if (d1 < 1) connected.push({ idx: realIdx, startT: 0 });
-      else if (d2 < 1) connected.push({ idx: realIdx, startT: 1 });
-    });
+    // Determine which node we arrived at
+    const arrivedNodeId = agent.tOnSpring === 0 ? currentSpring.nodeA : currentSpring.nodeB;
 
-    if (connected.length > 0) {
-      const options = connected.map((c) => {
-        const nextLine = c.idx < 4 ? state.frameLines[c.idx] : agent.lines[c.idx - 4];
-        const otherY = c.startT === 0 ? nextLine.y2 : nextLine.y1;
-        const isUp = otherY < agent.y;
-        return { ...c, isUp };
-      });
+    // Find all connected springs at this node (topological, not distance-based)
+    const connectedSpringIds = getConnectedSprings(state.world, arrivedNodeId);
+    const options: Array<{ springId: number; startT: number; isUp?: boolean }> = [];
 
+    for (const sid of connectedSpringIds) {
+      if (sid === agent.currentSpringId) continue;
+      const s = state.world.springMap.get(sid);
+      if (!s || s.broken) continue;
+      // Only traverse own springs or frame springs
+      if (s.ownerAgentId !== agent.id && s.ownerAgentId !== -1) continue;
+
+      // Determine which end of the connected spring we're at
+      const startT = s.nodeA === arrivedNodeId ? 0 : 1;
+      const otherNodeId = s.nodeA === arrivedNodeId ? s.nodeB : s.nodeA;
+      const otherNode = state.world.nodeMap.get(otherNodeId);
+      const isUp = otherNode ? otherNode.y < agent.y : false;
+
+      options.push({ springId: sid, startT, isUp });
+    }
+
+    if (options.length > 0) {
       const wantUp = Math.random() > agent.genome.bias;
       const preferred = options.filter((o) => o.isUp === wantUp);
       const candidates = preferred.length > 0 ? preferred : options;
       const next = candidates[Math.floor(Math.random() * candidates.length)];
 
-      agent.currentLineIdx = next.idx;
-      agent.t = next.startT;
+      agent.currentSpringId = next.springId;
+      agent.tOnSpring = next.startT;
       agent.direction = next.startT === 0 ? 1 : -1;
     } else {
       agent.direction *= -1;
@@ -315,8 +405,8 @@ function updateCrawl(
 
     const center = { x: state.width * 0.5, y: state.height * 0.5 };
     const toHub = { x: center.x - agent.x, y: center.y - agent.y };
-    const len = Math.max(1, Math.hypot(toHub.x, toHub.y));
-    const radial = { x: toHub.x / len, y: toHub.y / len };
+    const hubLen = Math.max(1, Math.hypot(toHub.x, toHub.y));
+    const radial = { x: toHub.x / hubLen, y: toHub.y / hubLen };
     const tangential = { x: -radial.y, y: radial.x };
     const radialFactor = 0.35 * agent.genome.radialPreference;
     const spiralFactor = 0.6 + agent.genome.spiralDrift * 0.6;
@@ -351,93 +441,190 @@ function updateFall(
   agent.energy -= config.costDropPixel * Math.hypot(agent.vx, agent.vy) * agent.genome.bodyMass;
   if (controls.immortality) agent.energy = Math.max(1, agent.energy);
 
-  let hit: { idx: number; x: number; y: number } | null = null;
-  let minT = Infinity;
+  // Ray-cast against springs (frame + own agent's springs)
+  let hit: { springId: number; x: number; y: number; isFrame: boolean } | null = null;
+  let minDist = Infinity;
 
-  const checkList = (list: typeof state.frameLines, offsetIdx: number) => {
-    for (let i = 0; i < list.length; i++) {
-      const line = list[i];
-      const result = getIntersection(
-        agent.x,
-        agent.y,
-        nextX,
-        nextY,
-        line.x1,
-        line.y1,
-        line.x2,
-        line.y2,
-      );
-      if (result && agent.dropStartPos) {
-        const distFromStart = Math.hypot(result.x - agent.dropStartPos.x, result.y - agent.dropStartPos.y);
-        if (distFromStart > 2) {
-          const distToHit = Math.hypot(result.x - agent.x, result.y - agent.y);
-          if (distToHit < minT) {
-            minT = distToHit;
-            hit = { idx: i + offsetIdx, x: result.x, y: result.y };
-          }
+  // Check all springs (frame + agent's own)
+  for (const spring of state.world.springs) {
+    if (spring.broken) continue;
+    if (spring.ownerAgentId !== agent.id && spring.ownerAgentId !== -1) continue;
+
+    const nodeA = state.world.nodeMap.get(spring.nodeA);
+    const nodeB = state.world.nodeMap.get(spring.nodeB);
+    if (!nodeA || !nodeB) continue;
+
+    const result = getIntersection(
+      agent.x, agent.y, nextX, nextY,
+      nodeA.x, nodeA.y, nodeB.x, nodeB.y,
+    );
+    if (result && agent.dropStartPos) {
+      const distFromStart = Math.hypot(result.x - agent.dropStartPos.x, result.y - agent.dropStartPos.y);
+      if (distFromStart > 2) {
+        const distToHit = Math.hypot(result.x - agent.x, result.y - agent.y);
+        if (distToHit < minDist) {
+          minDist = distToHit;
+          hit = { springId: spring.id, x: result.x, y: result.y, isFrame: spring.ownerAgentId === -1 };
         }
       }
     }
-  };
+  }
 
-  checkList(state.frameLines, 0);
-  checkList(agent.lines, 4);
-
+  // Check center hub
   if (!hit) {
     const hub = { x: state.width * 0.5, y: state.height * 0.5 };
     const distToHub = distToSegment(hub.x, hub.y, agent.x, agent.y, nextX, nextY);
     if (distToHub < 18) {
-      hit = { idx: -1, x: hub.x, y: hub.y };
-      minT = distToHub;
+      hit = { springId: -1, x: hub.x, y: hub.y, isFrame: false };
     }
   }
 
+  // Check if going out of bounds (attach to frame)
   if (!hit) {
-    if (nextY >= state.height) hit = { idx: 2, x: nextX, y: state.height };
-    else if (nextX <= 0) hit = { idx: 3, x: 0, y: nextY };
-    else if (nextX >= state.width) hit = { idx: 1, x: state.width, y: nextY };
+    if (nextY >= state.height) {
+      hit = { springId: -2, x: nextX, y: state.height, isFrame: true };
+    } else if (nextX <= 0) {
+      hit = { springId: -2, x: 0, y: nextY, isFrame: true };
+    } else if (nextX >= state.width) {
+      hit = { springId: -2, x: state.width, y: nextY, isFrame: true };
+    }
   }
 
   if (hit) {
-    const startIsFrame = agent.currentLineIdx < 4;
-    const endIsFrame = hit.idx < 4;
-    const sameSide = startIsFrame && endIsFrame && agent.currentLineIdx === hit.idx;
+    const landX = hit.x;
+    const landY = hit.y;
 
-    let attachIdx = hit.idx;
+    // Determine if start was on frame
+    const startSpring = state.world.springMap.get(agent.currentSpringId);
+    const startIsFrame = startSpring ? startSpring.ownerAgentId === -1 : true;
+    const endIsFrame = hit.isFrame;
+    const sameSide = startIsFrame && endIsFrame && hit.springId === agent.currentSpringId;
 
+    // Create thread from drop start to landing point
     if (!sameSide && agent.dropStartPos) {
-      const silkType: SilkType = startIsFrame || endIsFrame || hit.idx === -1 ? 'radial' : 'capture';
-      const silkProfile = getSilkProfile(silkType);
-      const lineColor =
-        silkType === 'capture' ? agent.webColor : agent.webColor.replace(/0\.4\)$/, '0.7)');
-      const newLine: Line = {
-        ...silkProfile,
-        x1: agent.dropStartPos.x,
-        y1: agent.dropStartPos.y,
-        x2: hit.x,
-        y2: hit.y,
-        id: agent.lines.length,
-        color: lineColor,
-        type: silkType,
-      };
-      const crowded = hit.idx !== -1 && isCrowded(newLine, agent, state);
+      const silkType: SilkType = startIsFrame || endIsFrame || hit.springId === -1 ? 'radial' : 'capture';
+      const silk = getSilkProfile(silkType);
+      const lineColor = silkType === 'capture'
+        ? agent.webColor
+        : agent.webColor.replace(/0\.4\)$/, '0.7)');
+
+      const crowded = hit.springId !== -1 && isCrowded(
+        agent.dropStartPos.x, agent.dropStartPos.y,
+        landX, landY,
+        agent, state,
+      );
+
       if (!crowded) {
-        agent.lines.push(newLine);
-        attachIdx = 4 + newLine.id;
+        // Find or create attachment nodes
+        let startNodeId: number | undefined;
+        let endNodeId: number | undefined;
+
+        // Start attachment: find nearest frame spring and split it to create attachment node
+        const startFrameHit = findNearestFrameSpring(state.world, agent.dropStartPos.x, agent.dropStartPos.y);
+        if (startFrameHit && startFrameHit.t > 0.01 && startFrameHit.t < 0.99) {
+          const dist = Math.hypot(agent.dropStartPos.x - startFrameHit.x, agent.dropStartPos.y - startFrameHit.y);
+          if (dist < 5) {
+            startNodeId = splitFrameSpring(state.world, startFrameHit.springId, startFrameHit.t);
+            if (startNodeId === -1) startNodeId = undefined;
+          }
+        }
+        // If start is on an agent spring, find nearest node
+        if (startNodeId == null) {
+          const nearStart = findNearestSpring(state.world, agent.dropStartPos.x, agent.dropStartPos.y);
+          if (nearStart && nearStart.dist < 3) {
+            const ns = state.world.springMap.get(nearStart.springId);
+            if (ns) {
+              startNodeId = nearStart.t < 0.5 ? ns.nodeA : ns.nodeB;
+            }
+          }
+        }
+
+        // End attachment
+        if (hit.springId >= 0) {
+          const hitSpring = state.world.springMap.get(hit.springId);
+          if (hitSpring && hitSpring.ownerAgentId === -1) {
+            // Hit a frame spring — split it
+            const dx = landX - state.world.nodeMap.get(hitSpring.nodeA)!.x;
+            const dy = landY - state.world.nodeMap.get(hitSpring.nodeA)!.y;
+            const bx = state.world.nodeMap.get(hitSpring.nodeB)!.x - state.world.nodeMap.get(hitSpring.nodeA)!.x;
+            const by = state.world.nodeMap.get(hitSpring.nodeB)!.y - state.world.nodeMap.get(hitSpring.nodeA)!.y;
+            const blenSq = bx * bx + by * by;
+            const paramT = blenSq > 0 ? Math.max(0.01, Math.min(0.99, (dx * bx + dy * by) / blenSq)) : 0.5;
+            endNodeId = splitFrameSpring(state.world, hit.springId, paramT);
+            if (endNodeId === -1) endNodeId = undefined;
+          } else if (hitSpring) {
+            // Hit an agent spring — use nearest node
+            const nearEnd = findNearestSpring(state.world, landX, landY);
+            if (nearEnd && nearEnd.dist < 3) {
+              const ns = state.world.springMap.get(nearEnd.springId);
+              if (ns) {
+                endNodeId = nearEnd.t < 0.5 ? ns.nodeA : ns.nodeB;
+              }
+            }
+          }
+        } else if (hit.springId === -2) {
+          // Out of bounds — find nearest frame spring
+          const frameHit = findNearestFrameSpring(state.world, landX, landY);
+          if (frameHit && frameHit.t > 0.01 && frameHit.t < 0.99) {
+            endNodeId = splitFrameSpring(state.world, frameHit.springId, frameHit.t);
+            if (endNodeId === -1) endNodeId = undefined;
+          }
+        }
+
+        const thread = createSubdividedThread(
+          state.world,
+          agent.dropStartPos.x, agent.dropStartPos.y,
+          landX, landY,
+          silk, silkType,
+          agent.id,
+          lineColor,
+          startNodeId,
+          endNodeId,
+        );
+        agent.threadIds.push(thread.id);
+
+        // Land on the last spring of the newly created thread
+        const lastSpringId = thread.springIds[thread.springIds.length - 1];
+        if (lastSpringId != null) {
+          agent.currentSpringId = lastSpringId;
+          agent.tOnSpring = 1;
+          agent.state = 'crawling';
+          agent.x = landX;
+          agent.y = landY;
+          agent.direction = Math.random() < 0.5 ? 1 : -1;
+          return;
+        }
       }
     }
 
+    // Default: land on the hit spring or nearest spring
     agent.state = 'crawling';
-    agent.x = hit.x;
-    agent.y = hit.y;
-    if (attachIdx < 0) attachIdx = agent.currentLineIdx;
-    agent.currentLineIdx = attachIdx;
+    agent.x = landX;
+    agent.y = landY;
 
-    const baseLine = attachIdx < 4 ? state.frameLines[attachIdx] : agent.lines[attachIdx - 4];
-    const line = baseLine ?? state.frameLines[0];
-    const len = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
-    const dist = Math.hypot(agent.x - line.x1, agent.y - line.y1);
-    agent.t = len > 0 ? dist / len : 0;
+    if (hit.springId >= 0) {
+      agent.currentSpringId = hit.springId;
+      // Compute tOnSpring for the hit spring
+      const hs = state.world.springMap.get(hit.springId);
+      if (hs) {
+        const na = state.world.nodeMap.get(hs.nodeA);
+        const nb = state.world.nodeMap.get(hs.nodeB);
+        if (na && nb) {
+          const sdx = nb.x - na.x;
+          const sdy = nb.y - na.y;
+          const slenSq = sdx * sdx + sdy * sdy;
+          agent.tOnSpring = slenSq > 0 ? Math.max(0, Math.min(1, ((landX - na.x) * sdx + (landY - na.y) * sdy) / slenSq)) : 0;
+        }
+      }
+    } else {
+      // Hub hit or fallback: find nearest spring
+      const nearest = findNearestSpring(state.world, landX, landY);
+      if (nearest) {
+        agent.currentSpringId = nearest.springId;
+        agent.tOnSpring = nearest.t;
+      }
+    }
+
     agent.direction = Math.random() < 0.5 ? 1 : -1;
   } else {
     agent.x = nextX;

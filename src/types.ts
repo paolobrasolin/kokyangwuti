@@ -1,3 +1,5 @@
+import type { PhysicsWorld } from './physics/types';
+
 export type SilkType = 'frame' | 'radial' | 'capture';
 
 export interface SilkProfile {
@@ -44,13 +46,16 @@ export interface Agent {
   x: number;
   y: number;
   state: 'crawling' | 'falling';
-  currentLineIdx: number;
-  t: number;
+  /** Current spring the agent is on */
+  currentSpringId: number;
+  /** Parametric position on current spring [0,1] */
+  tOnSpring: number;
   direction: number;
   dropStartPos: { x: number; y: number } | null;
   vx: number;
   vy: number;
-  lines: Line[];
+  /** Thread IDs owned by this agent in the physics world */
+  threadIds: number[];
   fliesCaught: Array<{ x: number; y: number; ageMs: number }>;
   color: string;
   webColor: string;
@@ -69,7 +74,9 @@ export interface SimulationState {
   genTimer: number;
   width: number;
   height: number;
-  frameLines: Line[];
+  world: PhysicsWorld;
+  /** Frame thread IDs (top, right, bottom, left) */
+  frameThreadIds: number[];
   agents: Agent[];
   globalTime: number;
 }
@@ -119,7 +126,7 @@ export interface UiStats {
 }
 
 export interface RenderSnapshot {
-  frameLines: Line[];
+  world: PhysicsWorld;
   agents: Agent[];
   width: number;
   height: number;
