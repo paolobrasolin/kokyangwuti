@@ -1,10 +1,10 @@
 import type { LogType, UiStats, UIRefs } from '../types';
 
 const LABEL_COLORS: Record<string, string> = {
-  dropRate: '#4fc3f7',
-  radialPreference: '#ffb74d',
-  spiralDrift: '#ba68c8',
-  jumpPower: '#81c784',
+  radialCount: '#4fc3f7',
+  spiralSpacing: '#ffb74d',
+  hubSize: '#ba68c8',
+  buildPrecision: '#81c784',
   bodyMass: '#f06292',
 };
 
@@ -17,16 +17,16 @@ export function renderUI(ui: UIRefs, stats: UiStats): void {
   ui.bar.style.width = `${energyPercent}%`;
   ui.val.textContent = stats.avgEnergy.toFixed(0);
 
-  ui.dnaDrop.textContent = stats.bestGenome.dropRate.toFixed(3);
-  ui.dnaSpeed.textContent = stats.bestGenome.radialPreference.toFixed(2);
-  ui.dnaBias.textContent = stats.bestGenome.spiralDrift.toFixed(2);
-  ui.dnaJump.textContent = stats.bestGenome.jumpPower.toFixed(2);
+  ui.dnaDrop.textContent = String(stats.bestGenome.radialCount);
+  ui.dnaSpeed.textContent = stats.bestGenome.spiralSpacing.toFixed(3);
+  ui.dnaBias.textContent = stats.bestGenome.hubSize.toFixed(2);
+  ui.dnaJump.textContent = stats.bestGenome.buildPrecision.toFixed(2);
   ui.dnaMass.textContent = stats.bestGenome.bodyMass.toFixed(2);
 
-  ui.dnaDrop.style.color = LABEL_COLORS.dropRate;
-  ui.dnaSpeed.style.color = LABEL_COLORS.radialPreference;
-  ui.dnaBias.style.color = LABEL_COLORS.spiralDrift;
-  ui.dnaJump.style.color = LABEL_COLORS.jumpPower;
+  ui.dnaDrop.style.color = LABEL_COLORS.radialCount;
+  ui.dnaSpeed.style.color = LABEL_COLORS.spiralSpacing;
+  ui.dnaBias.style.color = LABEL_COLORS.hubSize;
+  ui.dnaJump.style.color = LABEL_COLORS.buildPrecision;
   ui.dnaMass.style.color = LABEL_COLORS.bodyMass;
   const bestFitness = Number.isFinite(stats.bestFitness) ? stats.bestFitness : 0;
   ui.bestFit.textContent = bestFitness.toFixed(0);
@@ -39,15 +39,14 @@ export function renderUI(ui: UIRefs, stats: UiStats): void {
 }
 
 const PARAM_META = [
-  { key: 'dropRate', color: '#4fc3f7', min: 0, max: 0.05 },
-  { key: 'radialPreference', color: '#ffb74d', min: 0, max: 1 },
-  { key: 'spiralDrift', color: '#ba68c8', min: 0, max: 1.5 },
-  { key: 'jumpPower', color: '#81c784', min: 0, max: 2.5 },
+  { key: 'radialCount', color: '#4fc3f7', min: 8, max: 32 },
+  { key: 'spiralSpacing', color: '#ffb74d', min: 0.02, max: 0.08 },
+  { key: 'hubSize', color: '#ba68c8', min: 0.05, max: 0.2 },
+  { key: 'buildPrecision', color: '#81c784', min: 0.3, max: 1.0 },
   { key: 'bodyMass', color: '#f06292', min: 0.6, max: 1.8 },
-  { key: 'glide', color: '#64b5f6', min: 0, max: 5 },
+  { key: 'anchorCount', color: '#64b5f6', min: 2, max: 5 },
   { key: 'gravityScale', color: '#90a4ae', min: 0.4, max: 1.8 },
   { key: 'speed', color: '#ffd54f', min: 0.5, max: 3 },
-  { key: 'bias', color: '#aed581', min: 0, max: 1 },
 ];
 
 function renderGenomeChart(canvas: HTMLCanvasElement, history: UiStats['genomeHistory']): void {

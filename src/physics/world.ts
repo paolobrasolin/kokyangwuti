@@ -199,85 +199,57 @@ export function buildFrame(world: PhysicsWorld, width: number, height: number): 
 }
 
 /**
- * Build procedural tree branches as pinned node chains.
- * Generates 2-3 trees growing from the bottom, with forking branches.
+ * Build scattered branches as pinned node chains floating in the viewport.
+ * These are simple sticks at various angles that spiders can anchor webs between.
+ * Some branches have a single fork for variety.
  * Returns thread IDs for all branch segments.
  */
 export function buildBranches(world: PhysicsWorld, width: number, height: number): number[] {
-  const branchColor = 'rgba(80,50,30,0.5)';
-  const twigColor = 'rgba(70,55,35,0.35)';
+  const branchColor = 'rgba(80,50,30,0.55)';
   const threadIds: number[] = [];
   const spacing = PHYSICS.frameSpacing * 0.8;
 
-  // Seeded-ish random for variety but deterministic per dimensions
   let seed = (width * 7 + height * 13) | 0;
   function rand() {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
     return (seed & 0xffff) / 0xffff;
   }
 
-  const treeCount = 2 + Math.floor(rand() * 2); // 2-3 trees
+  const branchCount = 3 + Math.floor(rand() * 3); // 3-5 branches
+  const margin = 0.1; // keep endpoints away from edges
 
-  for (let t = 0; t < treeCount; t++) {
-    // Tree base position along bottom portion of screen
-    const baseX = width * (0.15 + rand() * 0.7);
-    const baseY = height; // grows from bottom
+  for (let b = 0; b < branchCount; b++) {
+    // Random midpoint somewhere in the viewport
+    const midX = width * (margin + rand() * (1 - 2 * margin));
+    const midY = height * (margin + rand() * (1 - 2 * margin));
 
-    // Trunk grows upward with slight lean
-    const trunkHeight = height * (0.3 + rand() * 0.35);
-    const lean = (rand() - 0.5) * width * 0.08;
+    // Random angle and length
+    const angle = rand() * Math.PI; // 0 to PI (no need for full circle, stick is symmetric)
+    const halfLen = Math.min(width, height) * (0.1 + rand() * 0.15);
 
-    const tipX = baseX + lean;
-    const tipY = baseY - trunkHeight;
+    const x1 = Math.max(10, Math.min(width - 10, midX - Math.cos(angle) * halfLen));
+    const y1 = Math.max(10, Math.min(height - 10, midY - Math.sin(angle) * halfLen));
+    const x2 = Math.max(10, Math.min(width - 10, midX + Math.cos(angle) * halfLen));
+    const y2 = Math.max(10, Math.min(height - 10, midY + Math.sin(angle) * halfLen));
 
-    // Build trunk as pinned chain
-    buildBranchSegment(
-      world, baseX, baseY, tipX, tipY, spacing, branchColor, threadIds,
-    );
+    buildBranchSegment(world, x1, y1, x2, y2, spacing, branchColor, threadIds);
 
-    // Fork into 2-4 main branches from the trunk
-    const branchCount = 2 + Math.floor(rand() * 3);
-    for (let b = 0; b < branchCount; b++) {
-      // Branch starts somewhere along upper 70% of trunk
-      const forkFrac = 0.3 + rand() * 0.7;
-      const forkX = baseX + lean * forkFrac;
-      const forkY = baseY - trunkHeight * forkFrac;
+    // ~40% chance of a fork from somewhere along the branch
+    if (rand() < 0.4) {
+      const forkFrac = 0.3 + rand() * 0.4;
+      const forkX = x1 + (x2 - x1) * forkFrac;
+      const forkY = y1 + (y2 - y1) * forkFrac;
+      const forkAngle = angle + (rand() < 0.5 ? 1 : -1) * (0.4 + rand() * 0.8);
+      const forkLen = halfLen * (0.4 + rand() * 0.4);
+      const forkEndX = Math.max(10, Math.min(width - 10, forkX + Math.cos(forkAngle) * forkLen));
+      const forkEndY = Math.max(10, Math.min(height - 10, forkY + Math.sin(forkAngle) * forkLen));
 
-      // Branch direction: spread outward and slightly up/down
-      const side = rand() < 0.5 ? -1 : 1;
-      const branchLen = trunkHeight * (0.2 + rand() * 0.4);
-      const angle = -Math.PI * 0.5 + side * (0.3 + rand() * 0.8);
-      const endX = forkX + Math.cos(angle) * branchLen;
-      const endY = forkY + Math.sin(angle) * branchLen;
-
-      // Clamp to viewport with margin
-      const clampedX = Math.max(20, Math.min(width - 20, endX));
-      const clampedY = Math.max(20, Math.min(height - 20, endY));
-
-      // Find nearest existing node at fork point to connect
-      const forkNode = findNearestNodeAt(world, forkX, forkY, 5);
-
+      // Connect fork to nearest node on the parent branch
+      const forkNode = findNearestNodeAt(world, forkX, forkY, spacing);
       buildBranchSegment(
-        world, forkX, forkY, clampedX, clampedY, spacing, branchColor, threadIds,
+        world, forkX, forkY, forkEndX, forkEndY, spacing, branchColor, threadIds,
         forkNode?.id,
       );
-
-      // Optional sub-branches (twigs)
-      if (rand() < 0.6) {
-        const twigFrac = 0.4 + rand() * 0.4;
-        const twigX = forkX + (clampedX - forkX) * twigFrac;
-        const twigY = forkY + (clampedY - forkY) * twigFrac;
-        const twigLen = branchLen * (0.3 + rand() * 0.3);
-        const twigAngle = angle + (rand() - 0.5) * 1.2;
-        const twigEndX = Math.max(20, Math.min(width - 20, twigX + Math.cos(twigAngle) * twigLen));
-        const twigEndY = Math.max(20, Math.min(height - 20, twigY + Math.sin(twigAngle) * twigLen));
-
-        const twigForkNode = findNearestNodeAt(world, twigX, twigY, 5);
-        buildBranchSegment(
-          world, twigX, twigY, twigEndX, twigEndY, spacing * 1.2, twigColor, threadIds,
-          twigForkNode?.id,
-        );
-      }
     }
   }
 

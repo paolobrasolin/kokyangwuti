@@ -10,26 +10,22 @@ export interface SilkProfile {
   tension: number;
 }
 
-export interface Line extends SilkProfile {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  id: number;
-  color: string;
-  type: SilkType;
-}
+export type BuildPhase = 'explore' | 'radial' | 'spiral' | 'done';
 
 export interface Genome {
-  dropRate: number;
-  glide: number;
-  speed: number;
-  bias: number;
-  radialPreference: number;
-  spiralDrift: number;
-  gravityScale: number;
-  jumpPower: number;
-  bodyMass: number;
+  // Web architecture
+  radialCount: number;     // 8-32, number of radial spokes
+  spiralSpacing: number;   // 0.02-0.08, gap between spiral turns (fraction of web radius)
+  hubSize: number;         // 0.05-0.2, hub free zone (fraction of web radius)
+
+  // Construction behavior
+  buildPrecision: number;  // 0.3-1.0, aiming accuracy for drops
+  anchorCount: number;     // 2-5, structural threads before hub is established
+
+  // Physical traits
+  speed: number;           // 0.5-3, crawling speed
+  bodyMass: number;        // 0.6-1.8, weight
+  gravityScale: number;    // 0.4-1.8, falling acceleration
 }
 
 export interface GenomeSnapshot {
@@ -60,6 +56,19 @@ export interface Agent {
   color: string;
   webColor: string;
   legPhase: number;
+
+  // Construction state machine
+  buildPhase: BuildPhase;
+  hubX: number;
+  hubY: number;
+  webRadius: number;
+  currentAngle: number;
+  radialsBuilt: number;
+  spiralRadius: number;
+  spiralAngle: number;
+  anchorPoints: Array<{ x: number; y: number }>;
+  crawlTarget: { x: number; y: number } | null;
+  crawlTimer: number;
 }
 
 export interface EvolutionState {
@@ -75,7 +84,7 @@ export interface SimulationState {
   width: number;
   height: number;
   world: PhysicsWorld;
-  /** Frame thread IDs (top, right, bottom, left) */
+  /** Frame thread IDs (top, right, bottom, left + branches) */
   frameThreadIds: number[];
   agents: Agent[];
   globalTime: number;

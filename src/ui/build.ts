@@ -73,7 +73,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow1.className = 'stat-row';
   const dnaLabel1 = document.createElement('span');
   dnaLabel1.className = 'stat-label';
-  dnaLabel1.textContent = 'Drop Rate:';
+  dnaLabel1.textContent = 'Radial Count:';
   const dnaVal1 = document.createElement('span');
   dnaVal1.id = 'dna-drop';
   dnaVal1.className = 'stat-val';
@@ -86,7 +86,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow2.className = 'stat-row';
   const dnaLabel2 = document.createElement('span');
   dnaLabel2.className = 'stat-label';
-  dnaLabel2.textContent = 'Radial Pref:';
+  dnaLabel2.textContent = 'Spiral Gap:';
   const dnaVal2 = document.createElement('span');
   dnaVal2.id = 'dna-speed';
   dnaVal2.className = 'stat-val';
@@ -99,7 +99,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow3.className = 'stat-row';
   const dnaLabel3 = document.createElement('span');
   dnaLabel3.className = 'stat-label';
-  dnaLabel3.textContent = 'Spiral Drift:';
+  dnaLabel3.textContent = 'Hub Size:';
   const dnaVal3 = document.createElement('span');
   dnaVal3.id = 'dna-bias';
   dnaVal3.className = 'stat-val';
@@ -112,7 +112,7 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow4.className = 'stat-row';
   const dnaLabel4 = document.createElement('span');
   dnaLabel4.className = 'stat-label';
-  dnaLabel4.textContent = 'Jump Power:';
+  dnaLabel4.textContent = 'Precision:';
   const dnaVal4 = document.createElement('span');
   dnaVal4.id = 'dna-jump';
   dnaVal4.className = 'stat-val';

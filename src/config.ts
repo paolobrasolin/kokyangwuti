@@ -17,15 +17,14 @@ export const CONFIG = {
 };
 
 export const BASE_GENOME: Genome = {
-  dropRate: 0.015,
-  glide: 0.5,
+  radialCount: 16,
+  spiralSpacing: 0.05,
+  hubSize: 0.1,
+  buildPrecision: 0.7,
+  anchorCount: 3,
   speed: 1.0,
-  bias: 0.35,
-  radialPreference: 0.6,
-  spiralDrift: 0.25,
-  gravityScale: 1.0,
-  jumpPower: 0.6,
   bodyMass: 1.0,
+  gravityScale: 1.0,
 };
 
 export type Config = typeof CONFIG;
