@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import type { Config } from '../config';
 import { createAgent, mutate } from './agents';
-import { buildFrame, createWorld } from '../physics/world';
+import { buildBranches, buildFrame, createWorld } from '../physics/world';
 
 const SILK_PROFILES: Record<SilkType, SilkProfile> = {
   frame: {
@@ -42,6 +42,9 @@ export function getSilkProfile(type: SilkType): SilkProfile {
 export function buildFrameWorld(state: SimulationState): void {
   state.world = createWorld();
   state.frameThreadIds = buildFrame(state.world, state.width, state.height);
+  // Add tree branches as additional anchor structures
+  const branchThreadIds = buildBranches(state.world, state.width, state.height);
+  state.frameThreadIds.push(...branchThreadIds);
 }
 
 export function startGeneration(
