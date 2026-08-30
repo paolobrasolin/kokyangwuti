@@ -1,21 +1,45 @@
-import type { Agent, Genome, SimulationState } from '../types';
 import type { Config } from '../config';
+import { GENOME_RANGES } from '../config';
 import { findNearestSpring } from '../physics/world';
+import type { Rng } from '../rng';
+import type { Agent, Genome, SimulationState } from '../types';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function mutate(genome: Genome): Genome {
+/** Per-field jitter width. Each field mutates by at most ±half of this. */
+const MUTATION_STEP: Record<keyof Genome, number> = {
+  angleGapThreshold: 0.24,
+  buildNoise: 0.16,
+  exploreDropRate: 0.016,
+  gravityBias: 0.4,
+  structureAttraction: 0.4,
+  captureSwitchThreshold: 0.24,
+  attachReach: 16,
+  tensionPreference: 0.4,
+  ownSilkPreference: 0.4,
+  headingInertia: 0.4,
+  hubAttraction: 0.4,
+  stopDensity: 8,
+  speed: 0.2,
+  bodyMass: 0.3,
+  gravityScale: 0.4,
+};
+
+const MUTATION_CHANCE = 0.4;
+
+export function mutate(genome: Genome, rng: Rng): Genome {
   const next = { ...genome };
-  if (Math.random() < 0.4) next.radialCount = clamp(Math.round(next.radialCount + (Math.random() - 0.5) * 6), 8, 32);
-  if (Math.random() < 0.4) next.spiralSpacing = clamp(next.spiralSpacing + (Math.random() - 0.5) * 0.02, 0.02, 0.08);
-  if (Math.random() < 0.4) next.hubSize = clamp(next.hubSize + (Math.random() - 0.5) * 0.05, 0.05, 0.2);
-  if (Math.random() < 0.4) next.buildPrecision = clamp(next.buildPrecision + (Math.random() - 0.5) * 0.15, 0.3, 1.0);
-  if (Math.random() < 0.4) next.anchorCount = clamp(next.anchorCount + (Math.random() - 0.5) * 1.0, 2, 5);
-  if (Math.random() < 0.4) next.speed = clamp(next.speed + (Math.random() - 0.5) * 0.2, 0.5, 3);
-  if (Math.random() < 0.4) next.bodyMass = clamp(next.bodyMass + (Math.random() - 0.5) * 0.3, 0.6, 1.8);
-  if (Math.random() < 0.4) next.gravityScale = clamp(next.gravityScale + (Math.random() - 0.5) * 0.4, 0.4, 1.8);
+  for (const key of Object.keys(MUTATION_STEP) as Array<keyof Genome>) {
+    if (!rng.chance(MUTATION_CHANCE)) continue;
+    const [min, max] = GENOME_RANGES[key];
+    next[key] = clamp(
+      next[key] + (rng.next() - 0.5) * MUTATION_STEP[key],
+      min,
+      max,
+    );
+  }
   return next;
 }
 
@@ -25,45 +49,55 @@ export function createAgent(
   state: SimulationState,
   config: Config,
 ): Agent {
-  const startX = Math.random() * state.width;
-  const hue = Math.random() * 360;
+  // Private stream per agent: hash(generationSeed, id).
+  const rng = state.rng.fork(id);
+
+  const startX = rng.next() * state.width;
+  const hue = rng.next() * 360;
 
   // Find the nearest frame spring to the start position (top edge)
   const nearest = findNearestSpring(state.world, startX, 0, -1);
   const springId = nearest ? nearest.springId : 0;
-  const tOnSpring = nearest ? nearest.t : (state.width > 0 ? startX / state.width : 0);
+  const tOnSpring = nearest
+    ? nearest.t
+    : state.width > 0
+      ? startX / state.width
+      : 0;
+
+  // A bigger body starts with more in the tank *and* burns it faster; fitness
+  // scores the difference, so the head start is not worth anything by itself.
+  const startEnergy = config.startingEnergy * genome.bodyMass;
 
   return {
     id,
     genome,
+    rng,
     alive: true,
-    energy: config.startingEnergy * genome.bodyMass,
+    energy: startEnergy,
+    startEnergy,
     score: 0,
     x: startX,
     y: 0,
     state: 'crawling',
     currentSpringId: springId,
     tOnSpring,
-    direction: Math.random() < 0.5 ? 1 : -1,
+    direction: rng.sign(),
     dropStartPos: null,
+    dropStartNodeId: null,
     vx: 0,
     vy: 0,
     threadIds: [],
     fliesCaught: [],
     color: `hsl(${hue}, 100%, 60%)`,
     webColor: `hsla(${hue}, 100%, 70%, 0.4)`,
-    legPhase: Math.random() * 10,
-    // Construction state
-    buildPhase: 'explore',
-    hubX: state.width * 0.5,
-    hubY: state.height * 0.5,
-    webRadius: 0,
-    currentAngle: 0,
-    radialsBuilt: 0,
-    spiralRadius: 0,
-    spiralAngle: 0,
-    anchorPoints: [],
-    crawlTarget: null,
-    crawlTimer: 0,
+    legPhase: rng.next() * 10,
+    // Sensorimotor memory: nothing about the web is known yet.
+    silkMode: 'structural',
+    building: true,
+    heading: 0,
+    distanceSinceAttach: 0,
+    homeNodeId: -1,
+    homeDegree: 0,
+    silkSpent: 0,
   };
 }

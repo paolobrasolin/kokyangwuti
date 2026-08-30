@@ -24,5 +24,5 @@ You are an expert in JavaScript, Rsbuild, and web application development. You w
 
 ### Biome
 
-- Run `npm run lint` to lint your code
+- Run `npm run check` to lint and auto-fix your code
 - Run `npm run format` to format your code

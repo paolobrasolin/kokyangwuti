@@ -1,5 +1,24 @@
 import type { UIRefs } from '../types';
 
+/** A `label: value` row. Returns the value span so the presenter can fill it. */
+function statRow(
+  label: string,
+  id: string,
+): { row: HTMLDivElement; value: HTMLSpanElement } {
+  const row = document.createElement('div');
+  row.className = 'stat-row';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'stat-label';
+  labelEl.textContent = label;
+  const value = document.createElement('span');
+  value.id = id;
+  value.className = 'stat-val';
+  value.textContent = '--';
+  row.appendChild(labelEl);
+  row.appendChild(value);
+  return { row, value };
+}
+
 export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   const uiLayer = document.createElement('div');
   uiLayer.id = 'ui-layer';
@@ -66,16 +85,16 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaDisplay.className = 'dna-display';
   const dnaTitle = document.createElement('span');
   dnaTitle.className = 'dna-title';
-  dnaTitle.textContent = 'BEHAVIORAL GENOME (ANCESTOR)';
+  dnaTitle.textContent = 'BEHAVIORAL GENOME (ALL-TIME BEST)';
   dnaDisplay.appendChild(dnaTitle);
 
   const dnaRow1 = document.createElement('div');
   dnaRow1.className = 'stat-row';
   const dnaLabel1 = document.createElement('span');
   dnaLabel1.className = 'stat-label';
-  dnaLabel1.textContent = 'Radial Count:';
+  dnaLabel1.textContent = 'Gap Threshold:';
   const dnaVal1 = document.createElement('span');
-  dnaVal1.id = 'dna-drop';
+  dnaVal1.id = 'dna-gap';
   dnaVal1.className = 'stat-val';
   dnaVal1.textContent = '--';
   dnaRow1.appendChild(dnaLabel1);
@@ -86,9 +105,9 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow2.className = 'stat-row';
   const dnaLabel2 = document.createElement('span');
   dnaLabel2.className = 'stat-label';
-  dnaLabel2.textContent = 'Spiral Gap:';
+  dnaLabel2.textContent = 'Explore Rate:';
   const dnaVal2 = document.createElement('span');
-  dnaVal2.id = 'dna-speed';
+  dnaVal2.id = 'dna-explore';
   dnaVal2.className = 'stat-val';
   dnaVal2.textContent = '--';
   dnaRow2.appendChild(dnaLabel2);
@@ -99,9 +118,9 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow3.className = 'stat-row';
   const dnaLabel3 = document.createElement('span');
   dnaLabel3.className = 'stat-label';
-  dnaLabel3.textContent = 'Hub Size:';
+  dnaLabel3.textContent = 'Attach Reach:';
   const dnaVal3 = document.createElement('span');
-  dnaVal3.id = 'dna-bias';
+  dnaVal3.id = 'dna-reach';
   dnaVal3.className = 'stat-val';
   dnaVal3.textContent = '--';
   dnaRow3.appendChild(dnaLabel3);
@@ -112,9 +131,9 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaRow4.className = 'stat-row';
   const dnaLabel4 = document.createElement('span');
   dnaLabel4.className = 'stat-label';
-  dnaLabel4.textContent = 'Precision:';
+  dnaLabel4.textContent = 'Capture Switch:';
   const dnaVal4 = document.createElement('span');
-  dnaVal4.id = 'dna-jump';
+  dnaVal4.id = 'dna-switch';
   dnaVal4.className = 'stat-val';
   dnaVal4.textContent = '--';
   dnaRow4.appendChild(dnaLabel4);
@@ -146,6 +165,24 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   dnaDisplay.appendChild(chartCanvas);
 
   uiLayer.appendChild(dnaDisplay);
+
+  // Per-genome web metrics of the last generation's winner.
+  const webDisplay = document.createElement('div');
+  webDisplay.className = 'dna-display';
+  const webTitle = document.createElement('span');
+  webTitle.className = 'dna-title';
+  webTitle.textContent = 'BEST WEB (LAST GEN)';
+  webDisplay.appendChild(webTitle);
+
+  const webSilk = statRow('Silk Spent:', 'web-silk');
+  const webCapture = statRow('Capture Silk:', 'web-capture');
+  const webThreads = statRow('Threads:', 'web-threads');
+  const webFlies = statRow('Flies Caught:', 'web-flies');
+  webDisplay.appendChild(webSilk.row);
+  webDisplay.appendChild(webCapture.row);
+  webDisplay.appendChild(webThreads.row);
+  webDisplay.appendChild(webFlies.row);
+  uiLayer.appendChild(webDisplay);
 
   const controlGroup1 = document.createElement('div');
   controlGroup1.className = 'control-group';
@@ -200,6 +237,9 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   statRow4.appendChild(val4);
   uiLayer.appendChild(statRow4);
 
+  const meanFit = statRow('Gen Best / Mean:', 'mean-fitness');
+  uiLayer.appendChild(meanFit.row);
+
   const logConsole = document.createElement('div');
   logConsole.id = 'log-console';
   uiLayer.appendChild(logConsole);
@@ -222,12 +262,17 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
     pop: val2,
     bar: barFill,
     val: val3,
-    dnaDrop: dnaVal1,
-    dnaSpeed: dnaVal2,
-    dnaBias: dnaVal3,
-    dnaJump: dnaVal4,
+    dnaGap: dnaVal1,
+    dnaExplore: dnaVal2,
+    dnaReach: dnaVal3,
+    dnaSwitch: dnaVal4,
     dnaMass: dnaVal5,
     bestFit: val4,
+    meanFit: meanFit.value,
+    webSilk: webSilk.value,
+    webCapture: webCapture.value,
+    webThreads: webThreads.value,
+    webFlies: webFlies.value,
     popInput,
     food: foodInput,
     speedBtn,

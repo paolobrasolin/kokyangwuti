@@ -1,3 +1,5 @@
+import type { Config } from '../config';
+import { buildBranches, buildFrame, createWorld } from '../physics/world';
 import type {
   Agent,
   EvolutionState,
@@ -6,10 +8,17 @@ import type {
   SilkType,
   SimulationControls,
   SimulationState,
+  WebMetrics,
 } from '../types';
-import type { Config } from '../config';
-import { createAgent, mutate } from './agents';
-import { buildBranches, buildFrame, createWorld } from '../physics/world';
+import { createAgent } from './agents';
+import {
+  computeFitness,
+  evolvePopulation,
+  measureWeb,
+  normalizeFitness,
+  resizePopulation,
+} from './evolution';
+import { seedGeneration } from './state';
 
 const SILK_PROFILES: Record<SilkType, SilkProfile> = {
   frame: {
@@ -42,67 +51,164 @@ export function getSilkProfile(type: SilkType): SilkProfile {
 export function buildFrameWorld(state: SimulationState): void {
   state.world = createWorld();
   state.frameThreadIds = buildFrame(state.world, state.width, state.height);
-  // Add tree branches as additional anchor structures
-  const branchThreadIds = buildBranches(state.world, state.width, state.height);
+  // Add tree branches as additional anchor structures. A dedicated fork keeps
+  // the branch layout stable for a generation even across resizes/rebuilds.
+  const branchThreadIds = buildBranches(
+    state.world,
+    state.width,
+    state.height,
+    state.rng.fork('world'),
+  );
   state.frameThreadIds.push(...branchThreadIds);
 }
 
+/** Snapshots kept for the genome chart. */
+const HISTORY_LIMIT = 160;
+
+/**
+ * Instantiate the persistent population in a fresh arena.
+ *
+ * Agents are always constructed from scratch: an `Agent` carries world node ids
+ * (`homeNodeId`, `currentSpringId`) that mean nothing once the world is rebuilt,
+ * so only the *genome* survives a generation boundary.
+ */
 export function startGeneration(
   state: SimulationState,
   evolution: EvolutionState,
   controls: SimulationControls,
   config: Config,
-): { generation: number; genome: Genome } {
+): { generation: number; genome: Genome; population: Genome[] } {
   state.genTimer = 0;
   state.active = true;
 
+  seedGeneration(state, evolution.generation);
   buildFrameWorld(state);
 
-  state.agents = [];
-  for (let i = 0; i < controls.targetPopulation; i++) {
-    const genome = mutate(evolution.bestGenome);
-    state.agents.push(createAgent(i, genome, state, config));
-  }
+  // The population slider may have moved since the last generation.
+  evolution.population = resizePopulation(
+    evolution.population,
+    controls.targetPopulation,
+    state.rng.fork('resize'),
+  );
 
-  return { generation: evolution.generation, genome: evolution.bestGenome };
+  state.agents = evolution.population.map((genome, index) =>
+    createAgent(index, { ...genome }, state, config),
+  );
+
+  return {
+    generation: evolution.generation,
+    genome: evolution.bestGenome,
+    population: evolution.population,
+  };
 }
 
+export interface GenerationReport {
+  generation: number;
+  /** True when this generation beat the all-time best fitness. */
+  newBest: boolean;
+  /** Best fitness of this generation, normalised by prey supply. */
+  bestFitness: number;
+  /** Mean fitness of this generation, normalised by prey supply. */
+  meanFitness: number;
+  /** All-time best normalised fitness of the run. */
+  allTimeBest: number;
+  /** Flies the prey stream offered this generation — the fitness denominator. */
+  preySpawned: number;
+  /** Best genome of this generation. */
+  genome: Genome;
+  bestAgent: Agent | null;
+  /** Web metrics of every agent, index-aligned with the evaluated population. */
+  metrics: WebMetrics[];
+  /** Metrics of `bestAgent`. */
+  bestMetrics: WebMetrics | null;
+}
+
+/**
+ * Score the generation, record it, and breed the next population.
+ *
+ * The population that gets bred is exactly the set of genomes that were
+ * evaluated (`state.agents.map(a => a.genome)`), so fitness and genome can never
+ * drift out of alignment. Selection draws from `hash(generationSeed,
+ * 'selection')`, which makes the next population a pure function of the run seed
+ * and the generation number.
+ */
 export function endGeneration(
   state: SimulationState,
   evolution: EvolutionState,
-): { newBest: boolean; bestFitness: number; genome: Genome; bestAgent: Agent | null } {
+): GenerationReport {
   state.active = false;
-  let best: Agent | undefined;
-  let maxFit = -Infinity;
 
-  state.agents.forEach((agent) => {
-    let fitness = agent.energy + agent.score * 1500;
-    if (!agent.alive) fitness = -1000 + agent.score * 500;
-    if (fitness > maxFit) {
-      maxFit = fitness;
-      best = agent;
+  const preySpawned = state.fliesSpawned;
+  const evaluated = state.agents.map((agent) => ({ ...agent.genome }));
+  // Selection reads raw fitness (one arena, one prey stream, so the denominator
+  // is shared); everything reported or recorded is normalised so that numbers
+  // from different generations mean the same thing.
+  const fitnesses = state.agents.map(computeFitness);
+  const scored = fitnesses.map((fitness) =>
+    normalizeFitness(fitness, preySpawned),
+  );
+  const metrics = state.agents.map((agent) =>
+    measureWeb(state.world, agent, preySpawned),
+  );
+
+  let bestIndex = -1;
+  let bestFitness = Number.NEGATIVE_INFINITY;
+  let total = 0;
+  scored.forEach((fitness, index) => {
+    total += fitness;
+    if (fitness > bestFitness) {
+      bestFitness = fitness;
+      bestIndex = index;
     }
   });
 
+  const meanFitness = scored.length > 0 ? total / scored.length : 0;
+  const bestAgent = bestIndex >= 0 ? state.agents[bestIndex] : null;
+  const genome = bestAgent
+    ? { ...bestAgent.genome }
+    : { ...evolution.bestGenome };
+
   let newBest = false;
-  const currentBest = best ?? null;
-  if (currentBest && maxFit > -500) {
-    if (maxFit > evolution.bestFitness) {
-      evolution.bestFitness = maxFit;
-      newBest = true;
-    }
-    evolution.bestGenome = { ...currentBest.genome };
+  if (bestAgent && bestFitness > evolution.bestFitness) {
+    evolution.bestFitness = bestFitness;
+    evolution.bestGenome = genome;
+    newBest = true;
   }
 
-  evolution.history.push({ generation: evolution.generation, genome: { ...evolution.bestGenome } });
-  if (evolution.history.length > 160) evolution.history.shift();
+  evolution.lastFitness = scored;
+  evolution.fitnessHistory.push({
+    generation: evolution.generation,
+    best: bestIndex >= 0 ? bestFitness : 0,
+    mean: meanFitness,
+  });
+  if (evolution.fitnessHistory.length > HISTORY_LIMIT)
+    evolution.fitnessHistory.shift();
+
+  // The chart tracks the lineage, so it plots this generation's winner rather
+  // than the frozen all-time champion.
+  evolution.history.push({ generation: evolution.generation, genome });
+  if (evolution.history.length > HISTORY_LIMIT) evolution.history.shift();
+
+  if (evaluated.length > 0) {
+    evolution.population = evolvePopulation(
+      evaluated,
+      fitnesses,
+      state.rng.fork('selection'),
+    );
+  }
 
   evolution.generation += 1;
 
   return {
+    generation: evolution.generation - 1,
     newBest,
-    bestFitness: evolution.bestFitness,
-    genome: evolution.bestGenome,
-    bestAgent: currentBest,
+    bestFitness: bestIndex >= 0 ? bestFitness : 0,
+    meanFitness,
+    allTimeBest: evolution.bestFitness,
+    preySpawned,
+    genome,
+    bestAgent,
+    metrics,
+    bestMetrics: bestIndex >= 0 ? metrics[bestIndex] : null,
   };
 }

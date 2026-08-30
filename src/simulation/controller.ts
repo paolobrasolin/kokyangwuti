@@ -1,5 +1,5 @@
-import { CONFIG, SPEED_STEPS } from '../config';
 import type { Config, SpeedStep } from '../config';
+import { CONFIG, SPEED_STEPS } from '../config';
 import type {
   LogType,
   RenderSnapshot,
@@ -7,31 +7,44 @@ import type {
   SimulationState,
   UiStats,
 } from '../types';
-import { createEvolutionState, createSimulationState, resizeSimulation } from './state';
+import type { GenerationReport } from './lifecycle';
 import { buildFrameWorld, endGeneration, startGeneration } from './lifecycle';
+import {
+  createEvolutionState,
+  createSimulationState,
+  resizeSimulation,
+} from './state';
 import { updateTick } from './update';
 
 interface ControllerOptions {
   config?: Config;
   logger: (message: string, type?: LogType) => void;
   onNewBest?: (fitness: number) => void;
+  /** Root RNG seed for the whole run. Defaults to `config.defaultSeed`. */
+  seed?: number;
 }
 
 export function createSimulationController({
   config = CONFIG,
   logger,
   onNewBest,
+  seed = config.defaultSeed,
 }: ControllerOptions) {
-  const state: SimulationState = createSimulationState(window.innerWidth, window.innerHeight);
-  const evolution = createEvolutionState();
+  const state: SimulationState = createSimulationState(
+    window.innerWidth,
+    window.innerHeight,
+    seed,
+  );
   const controls: SimulationControls = {
     simSpeed: SPEED_STEPS[0],
     flyRate: config.defaultFlyRate,
     targetPopulation: config.defaultPopulation,
     immortality: false,
   };
+  const evolution = createEvolutionState(seed, controls.targetPopulation);
 
   let restartHandle: number | null = null;
+  let lastReport: GenerationReport | null = null;
 
   function start(): void {
     const info = startGeneration(state, evolution, controls, config);
@@ -47,14 +60,26 @@ export function createSimulationController({
   }
 
   function end(): void {
-    const { newBest, bestFitness, bestAgent } = endGeneration(state, evolution);
-    if (newBest) {
+    const report = endGeneration(state, evolution);
+    lastReport = report;
+
+    // Fitness is quoted per `REFERENCE_PREY` flies; the raw supply is logged
+    // alongside so an unusually lean or fat generation is still visible.
+    logger(
+      `Gen ${report.generation}: best ${report.bestFitness.toFixed(0)}, mean ${report.meanFitness.toFixed(0)} (${report.preySpawned} prey)`,
+    );
+    if (report.newBest) {
       logger('New Best Genome!', 'highlight');
-      if (onNewBest) onNewBest(bestFitness);
-    } else {
-      logger('Colony Failed. Retrying.', 'danger');
+      if (onNewBest) onNewBest(report.allTimeBest);
     }
-    if (!bestAgent) logger('No survivor this round.', 'danger');
+    if (report.bestMetrics) {
+      const m = report.bestMetrics;
+      logger(
+        `Web: ${m.threadCount} threads, ${m.silkSpent.toFixed(0)}px silk, ${m.fliesCaught} flies`,
+      );
+    } else {
+      logger('No survivor this round.', 'danger');
+    }
     scheduleRestart();
   }
 
@@ -74,7 +99,11 @@ export function createSimulationController({
     return buildStats(metrics.activeCount, metrics.totalEnergy, remainingMs);
   }
 
-  function buildStats(activeCount: number, totalEnergy: number, timerMs: number): UiStats {
+  function buildStats(
+    activeCount: number,
+    totalEnergy: number,
+    timerMs: number,
+  ): UiStats {
     const avgEnergy = activeCount ? totalEnergy / activeCount : 0;
     return {
       generation: evolution.generation,
@@ -82,6 +111,9 @@ export function createSimulationController({
       activeCount,
       avgEnergy,
       bestFitness: evolution.bestFitness,
+      genBestFitness: lastReport ? lastReport.bestFitness : 0,
+      meanFitness: lastReport ? lastReport.meanFitness : 0,
+      bestMetrics: lastReport ? lastReport.bestMetrics : null,
       bestGenome: evolution.bestGenome,
       simSpeed: controls.simSpeed,
       flyRate: controls.flyRate,
@@ -96,6 +128,7 @@ export function createSimulationController({
     return {
       world: state.world,
       agents: state.agents,
+      flies: state.flies,
       width: state.width,
       height: state.height,
       globalTime: state.globalTime,

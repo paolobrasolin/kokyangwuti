@@ -1,7 +1,8 @@
-import type { SilkProfile, SilkType } from '../types';
-import type { PhysicsNode, PhysicsWorld, Spring, Thread } from './types';
-import { PHYSICS } from './config';
 import { getIntersection } from '../geometry';
+import type { Rng } from '../rng';
+import type { SilkProfile, SilkType } from '../types';
+import { PHYSICS } from './config';
+import type { PhysicsNode, PhysicsWorld, Spring, Thread } from './types';
 
 export function createWorld(): PhysicsWorld {
   return {
@@ -119,17 +120,21 @@ function silkToSpringParams(silk: SilkProfile, segmentLength: number) {
  * Build frame as chains of pinned nodes along each canvas edge.
  * Returns the 4 thread IDs for the frame edges (top, right, bottom, left).
  */
-export function buildFrame(world: PhysicsWorld, width: number, height: number): number[] {
+export function buildFrame(
+  world: PhysicsWorld,
+  width: number,
+  height: number,
+): number[] {
   const spacing = PHYSICS.frameSpacing;
   const frameColor = 'rgba(50,50,80,0.3)';
   const threadIds: number[] = [];
 
   // Define the 4 edges: [startX, startY, endX, endY]
   const edges: Array<[number, number, number, number]> = [
-    [0, 0, width, 0],        // top
+    [0, 0, width, 0], // top
     [width, 0, width, height], // right
     [width, height, 0, height], // bottom
-    [0, height, 0, 0],        // left
+    [0, height, 0, 0], // left
   ];
 
   // We need to share corner nodes between edges
@@ -204,16 +209,17 @@ export function buildFrame(world: PhysicsWorld, width: number, height: number): 
  * Some branches have a single fork for variety.
  * Returns thread IDs for all branch segments.
  */
-export function buildBranches(world: PhysicsWorld, width: number, height: number): number[] {
+export function buildBranches(
+  world: PhysicsWorld,
+  width: number,
+  height: number,
+  rng: Rng,
+): number[] {
   const branchColor = 'rgba(80,50,30,0.55)';
   const threadIds: number[] = [];
   const spacing = PHYSICS.frameSpacing * 0.8;
 
-  let seed = (width * 7 + height * 13) | 0;
-  function rand() {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return (seed & 0xffff) / 0xffff;
-  }
+  const rand = () => rng.next();
 
   const branchCount = 3 + Math.floor(rand() * 3); // 3-5 branches
   const margin = 0.1; // keep endpoints away from edges
@@ -227,10 +233,22 @@ export function buildBranches(world: PhysicsWorld, width: number, height: number
     const angle = rand() * Math.PI; // 0 to PI (no need for full circle, stick is symmetric)
     const halfLen = Math.min(width, height) * (0.1 + rand() * 0.15);
 
-    const x1 = Math.max(10, Math.min(width - 10, midX - Math.cos(angle) * halfLen));
-    const y1 = Math.max(10, Math.min(height - 10, midY - Math.sin(angle) * halfLen));
-    const x2 = Math.max(10, Math.min(width - 10, midX + Math.cos(angle) * halfLen));
-    const y2 = Math.max(10, Math.min(height - 10, midY + Math.sin(angle) * halfLen));
+    const x1 = Math.max(
+      10,
+      Math.min(width - 10, midX - Math.cos(angle) * halfLen),
+    );
+    const y1 = Math.max(
+      10,
+      Math.min(height - 10, midY - Math.sin(angle) * halfLen),
+    );
+    const x2 = Math.max(
+      10,
+      Math.min(width - 10, midX + Math.cos(angle) * halfLen),
+    );
+    const y2 = Math.max(
+      10,
+      Math.min(height - 10, midY + Math.sin(angle) * halfLen),
+    );
 
     buildBranchSegment(world, x1, y1, x2, y2, spacing, branchColor, threadIds);
 
@@ -241,13 +259,26 @@ export function buildBranches(world: PhysicsWorld, width: number, height: number
       const forkY = y1 + (y2 - y1) * forkFrac;
       const forkAngle = angle + (rand() < 0.5 ? 1 : -1) * (0.4 + rand() * 0.8);
       const forkLen = halfLen * (0.4 + rand() * 0.4);
-      const forkEndX = Math.max(10, Math.min(width - 10, forkX + Math.cos(forkAngle) * forkLen));
-      const forkEndY = Math.max(10, Math.min(height - 10, forkY + Math.sin(forkAngle) * forkLen));
+      const forkEndX = Math.max(
+        10,
+        Math.min(width - 10, forkX + Math.cos(forkAngle) * forkLen),
+      );
+      const forkEndY = Math.max(
+        10,
+        Math.min(height - 10, forkY + Math.sin(forkAngle) * forkLen),
+      );
 
       // Connect fork to nearest node on the parent branch
       const forkNode = findNearestNodeAt(world, forkX, forkY, spacing);
       buildBranchSegment(
-        world, forkX, forkY, forkEndX, forkEndY, spacing, branchColor, threadIds,
+        world,
+        forkX,
+        forkY,
+        forkEndX,
+        forkEndY,
+        spacing,
+        branchColor,
+        threadIds,
         forkNode?.id,
       );
     }
@@ -290,19 +321,23 @@ function buildBranchSegment(
   const segments = Math.max(1, Math.round(totalLen / spacing));
   const segLen = totalLen / segments;
 
-  const startNode = startNodeId != null
-    ? world.nodeMap.get(startNodeId)!
-    : addNode(world, startX, startY, true, -1);
+  const startNode =
+    startNodeId != null
+      ? world.nodeMap.get(startNodeId)!
+      : addNode(world, startX, startY, true, -1);
 
   const chainNodes: PhysicsNode[] = [startNode];
   for (let i = 1; i < segments; i++) {
     const frac = i / segments;
-    chainNodes.push(addNode(
-      world,
-      startX + (endX - startX) * frac,
-      startY + (endY - startY) * frac,
-      true, -1,
-    ));
+    chainNodes.push(
+      addNode(
+        world,
+        startX + (endX - startX) * frac,
+        startY + (endY - startY) * frac,
+        true,
+        -1,
+      ),
+    );
   }
   const endNode = addNode(world, endX, endY, true, -1);
   chainNodes.push(endNode);
@@ -325,7 +360,14 @@ function buildBranchSegment(
     springIds.push(s.id);
   }
 
-  const thread = addThread(world, springIds, startNode.id, endNode.id, 'frame', -1);
+  const thread = addThread(
+    world,
+    springIds,
+    startNode.id,
+    endNode.id,
+    'frame',
+    -1,
+  );
   threadIds.push(thread.id);
   return thread;
 }
@@ -353,14 +395,16 @@ export function createSubdividedThread(
   const params = silkToSpringParams(silk, segLen);
 
   // Start node: use existing or create pinned
-  const startNode = startNodeId != null
-    ? world.nodeMap.get(startNodeId)!
-    : addNode(world, startX, startY, true, ownerAgentId);
+  const startNode =
+    startNodeId != null
+      ? world.nodeMap.get(startNodeId)!
+      : addNode(world, startX, startY, true, ownerAgentId);
 
   // End node: use existing or create pinned
-  const endNode = endNodeId != null
-    ? world.nodeMap.get(endNodeId)!
-    : addNode(world, endX, endY, true, ownerAgentId);
+  const endNode =
+    endNodeId != null
+      ? world.nodeMap.get(endNodeId)!
+      : addNode(world, endX, endY, true, ownerAgentId);
 
   // Create intermediate unpinned nodes
   const chainNodes: PhysicsNode[] = [startNode];
@@ -391,7 +435,14 @@ export function createSubdividedThread(
     springIds.push(s.id);
   }
 
-  return addThread(world, springIds, startNode.id, endNode.id, silkType, ownerAgentId);
+  return addThread(
+    world,
+    springIds,
+    startNode.id,
+    endNode.id,
+    silkType,
+    ownerAgentId,
+  );
 }
 
 /**
@@ -405,12 +456,23 @@ export function findNearestSpring(
   ownerAgentId?: number,
   maxDist = Infinity,
 ): { springId: number; t: number; dist: number; x: number; y: number } | null {
-  let best: { springId: number; t: number; dist: number; x: number; y: number } | null = null;
+  let best: {
+    springId: number;
+    t: number;
+    dist: number;
+    x: number;
+    y: number;
+  } | null = null;
 
   for (let i = 0; i < world.springs.length; i++) {
     const spring = world.springs[i];
     if (spring.broken) continue;
-    if (ownerAgentId != null && spring.ownerAgentId !== ownerAgentId && spring.ownerAgentId !== -1) continue;
+    if (
+      ownerAgentId != null &&
+      spring.ownerAgentId !== ownerAgentId &&
+      spring.ownerAgentId !== -1
+    )
+      continue;
 
     const nodeA = world.nodeMap.get(spring.nodeA);
     const nodeB = world.nodeMap.get(spring.nodeB);
@@ -424,7 +486,10 @@ export function findNearestSpring(
     if (lenSq < 0.001) {
       t = 0;
     } else {
-      t = Math.max(0, Math.min(1, ((x - nodeA.x) * dx + (y - nodeA.y) * dy) / lenSq));
+      t = Math.max(
+        0,
+        Math.min(1, ((x - nodeA.x) * dx + (y - nodeA.y) * dy) / lenSq),
+      );
     }
 
     const px = nodeA.x + dx * t;
@@ -443,11 +508,16 @@ export function findNearestSpring(
  * Find the node closest to a point among nodes connected to a given spring.
  * Used for junction navigation.
  */
-export function getConnectedSprings(world: PhysicsWorld, nodeId: number): number[] {
-  return world.nodeAdjacency.get(nodeId)?.filter(sid => {
-    const s = world.springMap.get(sid);
-    return s && !s.broken;
-  }) ?? [];
+export function getConnectedSprings(
+  world: PhysicsWorld,
+  nodeId: number,
+): number[] {
+  return (
+    world.nodeAdjacency.get(nodeId)?.filter((sid) => {
+      const s = world.springMap.get(sid);
+      return s && !s.broken;
+    }) ?? []
+  );
 }
 
 /**
@@ -461,8 +531,18 @@ export function rayVsSprings(
   x2: number,
   y2: number,
   filterOwner?: number,
-): { springId: number; point: { x: number; y: number }; dist: number; t: number } | null {
-  let best: { springId: number; point: { x: number; y: number }; dist: number; t: number } | null = null;
+): {
+  springId: number;
+  point: { x: number; y: number };
+  dist: number;
+  t: number;
+} | null {
+  let best: {
+    springId: number;
+    point: { x: number; y: number };
+    dist: number;
+    t: number;
+  } | null = null;
 
   for (let i = 0; i < world.springs.length; i++) {
     const spring = world.springs[i];
@@ -474,7 +554,16 @@ export function rayVsSprings(
     const nodeB = world.nodeMap.get(spring.nodeB);
     if (!nodeA || !nodeB) continue;
 
-    const hit = getIntersection(x1, y1, x2, y2, nodeA.x, nodeA.y, nodeB.x, nodeB.y);
+    const hit = getIntersection(
+      x1,
+      y1,
+      x2,
+      y2,
+      nodeA.x,
+      nodeA.y,
+      nodeB.x,
+      nodeB.y,
+    );
     if (!hit) continue;
 
     const dist = Math.hypot(hit.x - x1, hit.y - y1);
@@ -483,10 +572,16 @@ export function rayVsSprings(
       const sdx = nodeB.x - nodeA.x;
       const sdy = nodeB.y - nodeA.y;
       const slenSq = sdx * sdx + sdy * sdy;
-      const t = slenSq > 0.001
-        ? ((hit.x - nodeA.x) * sdx + (hit.y - nodeA.y) * sdy) / slenSq
-        : 0;
-      best = { springId: spring.id, point: hit, dist, t: Math.max(0, Math.min(1, t)) };
+      const t =
+        slenSq > 0.001
+          ? ((hit.x - nodeA.x) * sdx + (hit.y - nodeA.y) * sdy) / slenSq
+          : 0;
+      best = {
+        springId: spring.id,
+        point: hit,
+        dist,
+        t: Math.max(0, Math.min(1, t)),
+      };
     }
   }
 
@@ -525,7 +620,13 @@ export function findNearestFrameSpring(
   x: number,
   y: number,
 ): { springId: number; t: number; x: number; y: number } | null {
-  let best: { springId: number; t: number; dist: number; x: number; y: number } | null = null;
+  let best: {
+    springId: number;
+    t: number;
+    dist: number;
+    x: number;
+    y: number;
+  } | null = null;
 
   for (let i = 0; i < world.springs.length; i++) {
     const spring = world.springs[i];
@@ -538,9 +639,13 @@ export function findNearestFrameSpring(
     const dx = nodeB.x - nodeA.x;
     const dy = nodeB.y - nodeA.y;
     const lenSq = dx * dx + dy * dy;
-    const t = lenSq > 0.001
-      ? Math.max(0, Math.min(1, ((x - nodeA.x) * dx + (y - nodeA.y) * dy) / lenSq))
-      : 0;
+    const t =
+      lenSq > 0.001
+        ? Math.max(
+            0,
+            Math.min(1, ((x - nodeA.x) * dx + (y - nodeA.y) * dy) / lenSq),
+          )
+        : 0;
 
     const px = nodeA.x + dx * t;
     const py = nodeA.y + dy * t;
@@ -551,14 +656,18 @@ export function findNearestFrameSpring(
     }
   }
 
-  return best ? { springId: best.springId, t: best.t, x: best.x, y: best.y } : null;
+  return best
+    ? { springId: best.springId, t: best.t, x: best.x, y: best.y }
+    : null;
 }
 
 /**
- * Split a frame spring at parametric t, inserting a new pinned node.
- * Returns the new node's id.
+ * Split any spring at parametric t, inserting a node that inherits the spring's
+ * owner. Substrate springs (owner -1) get a pinned node; silk gets a free one,
+ * so splitting a thread to attach to it does not stiffen the web.
+ * Returns the new node's id, or -1 if the spring is unknown.
  */
-export function splitFrameSpring(
+export function splitSpring(
   world: PhysicsWorld,
   springId: number,
   t: number,
@@ -573,21 +682,42 @@ export function splitFrameSpring(
   const nx = nodeA.x + (nodeB.x - nodeA.x) * t;
   const ny = nodeA.y + (nodeB.y - nodeA.y) * t;
 
-  const newNode = addNode(world, nx, ny, true, -1);
+  const isSubstrate = spring.ownerAgentId === -1;
+  const newNode = addNode(world, nx, ny, isSubstrate, spring.ownerAgentId);
 
-  // Create two new springs replacing the old one
-  const len1 = spring.restLength * t;
-  const len2 = spring.restLength * (1 - t);
+  // Create two new springs replacing the old one. The *extension ratio*
+  // (maxExtension / restLength) is the material property, so it is what the
+  // halves inherit — otherwise a short half would be effectively unbreakable.
+  const len1 = Math.max(1, spring.restLength * t);
+  const len2 = Math.max(1, spring.restLength * (1 - t));
+  const extensionRatio =
+    spring.restLength > 0 ? spring.maxExtension / spring.restLength : 1;
 
   const s1 = addSpring(
-    world, spring.nodeA, newNode.id, Math.max(1, len1),
-    spring.stiffness, spring.damping, spring.maxExtension,
-    spring.adhesion, spring.type, spring.ownerAgentId, spring.color,
+    world,
+    spring.nodeA,
+    newNode.id,
+    len1,
+    spring.stiffness,
+    spring.damping,
+    len1 * extensionRatio,
+    spring.adhesion,
+    spring.type,
+    spring.ownerAgentId,
+    spring.color,
   );
   const s2 = addSpring(
-    world, newNode.id, spring.nodeB, Math.max(1, len2),
-    spring.stiffness, spring.damping, spring.maxExtension,
-    spring.adhesion, spring.type, spring.ownerAgentId, spring.color,
+    world,
+    newNode.id,
+    spring.nodeB,
+    len2,
+    spring.stiffness,
+    spring.damping,
+    len2 * extensionRatio,
+    spring.adhesion,
+    spring.type,
+    spring.ownerAgentId,
+    spring.color,
   );
 
   // Update the thread that contains this spring
@@ -616,6 +746,18 @@ export function splitFrameSpring(
 }
 
 /**
+ * Split a frame spring at parametric t, inserting a new pinned node.
+ * Thin alias for {@link splitSpring}, kept for the substrate call sites.
+ */
+export function splitFrameSpring(
+  world: PhysicsWorld,
+  springId: number,
+  t: number,
+): number {
+  return splitSpring(world, springId, t);
+}
+
+/**
  * Apply an impulse to a spring (from fly impact).
  */
 export function applyImpulse(
@@ -637,12 +779,12 @@ export function applyImpulse(
   const forceB = t;
 
   if (!nodeA.pinned) {
-    nodeA.prevX -= impulseX * forceA / nodeA.mass;
-    nodeA.prevY -= impulseY * forceA / nodeA.mass;
+    nodeA.prevX -= (impulseX * forceA) / nodeA.mass;
+    nodeA.prevY -= (impulseY * forceA) / nodeA.mass;
   }
   if (!nodeB.pinned) {
-    nodeB.prevX -= impulseX * forceB / nodeB.mass;
-    nodeB.prevY -= impulseY * forceB / nodeB.mass;
+    nodeB.prevX -= (impulseX * forceB) / nodeB.mass;
+    nodeB.prevY -= (impulseY * forceB) / nodeB.mass;
   }
 }
 
@@ -697,7 +839,7 @@ export function cleanup(world: PhysicsWorld): void {
 
   // Remove broken spring ids from threads
   for (const thread of world.threads) {
-    thread.springIds = thread.springIds.filter(id => !brokenIds.has(id));
+    thread.springIds = thread.springIds.filter((id) => !brokenIds.has(id));
   }
 
   // Remove empty threads
@@ -717,7 +859,10 @@ export function cleanup(world: PhysicsWorld): void {
 
   for (let i = world.nodes.length - 1; i >= 0; i--) {
     const node = world.nodes[i];
-    if (!connectedNodeIds.has(node.id) && !(node.pinned && node.ownerAgentId === -1)) {
+    if (
+      !connectedNodeIds.has(node.id) &&
+      !(node.pinned && node.ownerAgentId === -1)
+    ) {
       world.nodeMap.delete(node.id);
       world.nodeAdjacency.delete(node.id);
       world.nodes.splice(i, 1);
@@ -728,7 +873,10 @@ export function cleanup(world: PhysicsWorld): void {
 /**
  * Count non-broken springs for an agent.
  */
-export function countAgentSprings(world: PhysicsWorld, agentId: number): number {
+export function countAgentSprings(
+  world: PhysicsWorld,
+  agentId: number,
+): number {
   let count = 0;
   for (const spring of world.springs) {
     if (!spring.broken && spring.ownerAgentId === agentId) count++;
@@ -739,7 +887,10 @@ export function countAgentSprings(world: PhysicsWorld, agentId: number): number 
 /**
  * Count threads for an agent.
  */
-export function countAgentThreads(world: PhysicsWorld, agentId: number): number {
+export function countAgentThreads(
+  world: PhysicsWorld,
+  agentId: number,
+): number {
   let count = 0;
   for (const thread of world.threads) {
     if (thread.ownerAgentId === agentId) count++;

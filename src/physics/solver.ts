@@ -1,7 +1,11 @@
-import type { PhysicsWorld } from './types';
 import { PHYSICS } from './config';
+import type { PhysicsWorld } from './types';
 
-export function stepPhysics(world: PhysicsWorld, dt: number, iterations: number): void {
+export function stepPhysics(
+  world: PhysicsWorld,
+  dt: number,
+  iterations: number,
+): void {
   const cappedDt = Math.min(dt, PHYSICS.maxDt);
   const dtSec = cappedDt / 1000;
   const dtSq = dtSec * dtSec;
@@ -103,11 +107,11 @@ export function applyForceToSpring(
   const forceB = t;
 
   if (!nodeA.pinned) {
-    nodeA.accX += forceX * forceA / nodeA.mass;
-    nodeA.accY += forceY * forceA / nodeA.mass;
+    nodeA.accX += (forceX * forceA) / nodeA.mass;
+    nodeA.accY += (forceY * forceA) / nodeA.mass;
   }
   if (!nodeB.pinned) {
-    nodeB.accX += forceX * forceB / nodeB.mass;
-    nodeB.accY += forceY * forceB / nodeB.mass;
+    nodeB.accX += (forceX * forceB) / nodeB.mass;
+    nodeB.accY += (forceY * forceB) / nodeB.mass;
   }
 }

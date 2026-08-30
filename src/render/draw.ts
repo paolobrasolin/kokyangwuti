@@ -1,6 +1,11 @@
 import type { RenderSnapshot } from '../types';
 
-export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): void {
+const TAU = Math.PI * 2;
+
+export function draw(
+  ctx: CanvasRenderingContext2D,
+  snapshot: RenderSnapshot,
+): void {
   ctx.fillStyle = '#050510';
   ctx.fillRect(0, 0, snapshot.width, snapshot.height);
 
@@ -21,22 +26,32 @@ export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): v
 
     for (let i = 0; i < thread.springIds.length; i++) {
       const spring = world.springMap.get(thread.springIds[i]);
-      if (!spring || spring.broken) { allValid = false; break; }
+      if (!spring || spring.broken) {
+        allValid = false;
+        break;
+      }
 
       if (i === 0) {
         color = spring.color;
-        lineWidth = spring.type === 'capture' ? 1 : spring.type === 'frame' ? 2 : 1.5;
+        lineWidth =
+          spring.type === 'capture' ? 1 : spring.type === 'frame' ? 2 : 1.5;
       }
 
       const nodeA = world.nodeMap.get(spring.nodeA);
-      if (!nodeA) { allValid = false; break; }
+      if (!nodeA) {
+        allValid = false;
+        break;
+      }
 
       if (i === 0) {
         points.push({ x: nodeA.x, y: nodeA.y });
       }
 
       const nodeB = world.nodeMap.get(spring.nodeB);
-      if (!nodeB) { allValid = false; break; }
+      if (!nodeB) {
+        allValid = false;
+        break;
+      }
       points.push({ x: nodeB.x, y: nodeB.y });
 
       drawnSprings.add(spring.id);
@@ -84,6 +99,30 @@ export function draw(ctx: CanvasRenderingContext2D, snapshot: RenderSnapshot): v
     ctx.lineTo(nodeB.x, nodeB.y);
     ctx.strokeStyle = spring.color;
     ctx.lineWidth = spring.type === 'capture' ? 1 : 1.5;
+    ctx.stroke();
+  }
+
+  // Draw live prey: a dark body with a wing blur, tinted while it is stuck to
+  // silk and thrashing.
+  for (const fly of snapshot.flies) {
+    const stuck = fly.nodeId >= 0;
+    const radius = 1.2 + fly.mass * 3;
+    const buzz = Math.sin(snapshot.globalTime * 40 + fly.id) * (stuck ? 2 : 1);
+
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = stuck ? '#ffcc66' : '#cfd6ff';
+    ctx.beginPath();
+    ctx.ellipse(fly.x, fly.y, radius * 2.2, radius * 0.9, buzz * 0.2, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = stuck ? '#ffaa33' : '#20242f';
+    ctx.beginPath();
+    ctx.arc(fly.x, fly.y, radius, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = stuck ? 'rgba(255,180,80,0.9)' : 'rgba(200,210,255,0.8)';
+    ctx.lineWidth = 0.8;
     ctx.stroke();
   }
 

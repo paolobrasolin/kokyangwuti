@@ -1,11 +1,11 @@
 import './index.css';
 import { CONFIG } from './config';
 import { startLoop } from './loop';
-import { draw } from './render/draw';
 import { resizeCanvas, setupCanvas } from './render/canvas';
+import { draw } from './render/draw';
 import { createSimulationController } from './simulation/controller';
-import { buildUI } from './ui/build';
 import { bindUI } from './ui/bind';
+import { buildUI } from './ui/build';
 import { createLogger, renderUI } from './ui/presenter';
 
 const { ui, canvas } = buildUI();

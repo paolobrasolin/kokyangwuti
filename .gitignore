@@ -4,9 +4,17 @@
 *.log*
 
 # Dist
-node_modules
+node_modules/
 dist/
 result/
+
+# Package manager stores
+.pnpm-store/
+
+# Tooling / environment
+.claude/
+.direnv/
+devpod_ssh
 
 # Profile
 .rspack-profile-*/
