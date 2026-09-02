@@ -60,10 +60,13 @@ fitness is normalised by the number of flies the generation actually offered, so
 ```
 src/rng.ts             seeded, splittable RNG streams
 src/geometry.ts        segment/intersection primitives
-src/physics/           Verlet mass-spring world: nodes, springs, threads, solver
+src/physics/           Verlet mass-spring world: nodes, springs, threads, solver,
+                       and the spatial grid that keeps thread queries local
 src/simulation/        senses, construction rules, prey, evolution, lifecycle
-src/render/            canvas drawing
+src/engine/            fixed-tick scheduler, worker host and page-side client
+src/render/            packed render frames and canvas drawing
 src/ui/                DOM panel construction, bindings, presenter
+bench/                 headless throughput/golden benchmarks and a Node runner
 ```
 
 `PLAN.md` is the design document and the authority on what may and may not exist
@@ -73,16 +76,44 @@ in the simulation layer. `AGENTS.md` has the working conventions.
 
 ```bash
 npm install
-npm run dev      # dev server with hot reload
-npm run build    # production bundle into dist/
-npm run preview  # serve the production build
-npm run test     # rstest suite (jsdom)
-npm run check    # biome lint + format, writing fixes
+npm run dev        # dev server with hot reload
+npm run build      # production bundle into dist/
+npm run preview    # serve the production build
+npm run test       # fast rstest suite (jsdom), a few seconds
+npm run test:slow  # statistical selection tests: whole generations, ~30 s
+npm run bench      # headless throughput + golden-checksum benchmarks
+npm run headless -- --generations 20 --pop 8 --seed 1   # run generations in Node
+npm run check      # biome lint + format, writing fixes
 ```
 
-The on-screen controls set simulation speed, population size and prey rate, and
-toggle immortality (useful for watching construction without the energy clock).
-At speed 1000 and above the physics solver is switched off and prey is resolved
-by a documented approximation; construction itself still runs at full fidelity,
-because a long tick is internally split into substeps short enough that no
-sensorimotor rule can be stepped over.
+The on-screen controls set simulation speed, population size and prey rate,
+toggle immortality (useful for watching construction without the energy clock)
+and switch the graphics off.
+
+## Speed, threads and accuracy
+
+The simulation advances in fixed 16 ms ticks, and nothing inside a tick knows
+how fast the run is going. "Speed" is scheduling: how many ticks the engine runs
+per wall-clock second — 1x, 5x, 20x, 100x, or Max, which is as many as the CPU
+allows. Two runs of the same seed are identical tick for tick whatever speed
+they were watched at (`tests/engine.test.ts` pins this). There is no cheaper
+physics for fast-forward: the old 1000x path that switched the solver off and
+resolved prey with an approximation is gone, so a long run is exactly the run
+you would have watched at 1x.
+
+The simulation runs in a Web Worker. The page only draws frames it is handed —
+packed into typed arrays and transferred, so a frame costs the simulation
+next to nothing — and asks for one per animation frame. A hidden tab, where
+`requestAnimationFrame` stops, simply stops asking and the run carries on at
+full pace in the background. The panel shows where the simulation is running
+and the speed it is really achieving; the speed button shows the measured speed
+in brackets whenever it falls short of the target. Where `Worker` is
+unavailable the same host runs on the page thread instead.
+
+Throughput on one laptop core at 1280×720: roughly 30x real time at population
+8 and 10x at population 24, i.e. a 60 s generation in about 2 s. The solver is
+now most of a tick; the thread queries (fly sweeps, dragline casts, leg-sweep
+senses) go through a uniform grid that returns exactly the candidates a full
+scan would, in the same order, so they changed nothing but the clock.
+`bench/golden.bench.ts` prints checksums of a full generation for exactly this
+kind of claim: an optimisation that is a pure refactor leaves them unchanged.

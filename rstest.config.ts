@@ -7,6 +7,9 @@ export default defineConfig({
   // Only our own suite: `.direnv` and `.pnpm-store` contain copies of this repo.
   include: ['tests/**/*.test.ts'],
   exclude: [
+    // Statistical arena runs at full physics; minutes, not seconds. See
+    // `npm run test:slow` and rstest.slow.config.ts.
+    'tests/slow/**',
     '**/node_modules/**',
     '**/dist/**',
     '**/.direnv/**',

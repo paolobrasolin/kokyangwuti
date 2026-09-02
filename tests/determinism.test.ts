@@ -17,7 +17,6 @@ const DT = 16;
 
 function makeControls(targetPopulation = 4): SimulationControls {
   return {
-    simSpeed: 1,
     flyRate: 0.3,
     targetPopulation,
     immortality: false,

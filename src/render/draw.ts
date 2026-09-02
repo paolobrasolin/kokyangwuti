@@ -1,187 +1,119 @@
-import type { RenderSnapshot } from '../types';
+import {
+  AGENT_STRIDE,
+  FLY_STRIDE,
+  MARK_STRIDE,
+  type RenderFrame,
+  SEGMENT_WIDTHS,
+} from './frame';
 
 const TAU = Math.PI * 2;
+const BACKGROUND = '#050510';
 
-export function draw(
-  ctx: CanvasRenderingContext2D,
-  snapshot: RenderSnapshot,
-): void {
-  ctx.fillStyle = '#050510';
-  ctx.fillRect(0, 0, snapshot.width, snapshot.height);
+export function draw(ctx: CanvasRenderingContext2D, frame: RenderFrame): void {
+  const { width, height, palette } = frame;
+  ctx.fillStyle = BACKGROUND;
+  ctx.fillRect(0, 0, width, height);
 
-  const { world } = snapshot;
-
-  // Draw all springs as polylines through node positions
-  // Group springs by thread for continuous polylines where possible
-  const drawnSprings = new Set<number>();
-
-  // Draw threads as polylines
-  for (const thread of world.threads) {
-    if (thread.springIds.length === 0) continue;
-
-    const points: Array<{ x: number; y: number }> = [];
-    let color = '';
-    let lineWidth = 1.5;
-    let allValid = true;
-
-    for (let i = 0; i < thread.springIds.length; i++) {
-      const spring = world.springMap.get(thread.springIds[i]);
-      if (!spring || spring.broken) {
-        allValid = false;
-        break;
-      }
-
-      if (i === 0) {
-        color = spring.color;
-        lineWidth =
-          spring.type === 'capture' ? 1 : spring.type === 'frame' ? 2 : 1.5;
-      }
-
-      const nodeA = world.nodeMap.get(spring.nodeA);
-      if (!nodeA) {
-        allValid = false;
-        break;
-      }
-
-      if (i === 0) {
-        points.push({ x: nodeA.x, y: nodeA.y });
-      }
-
-      const nodeB = world.nodeMap.get(spring.nodeB);
-      if (!nodeB) {
-        allValid = false;
-        break;
-      }
-      points.push({ x: nodeB.x, y: nodeB.y });
-
-      drawnSprings.add(spring.id);
+  // Silk and substrate, batched by (colour, width): a web of thousands of
+  // springs becomes a couple of dozen stroke calls.
+  const buckets = new Map<number, number[]>();
+  const count = frame.segmentColor.length;
+  for (let i = 0; i < count; i++) {
+    const key =
+      frame.segmentColor[i] * SEGMENT_WIDTHS.length + frame.segmentWidth[i];
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = [];
+      buckets.set(key, bucket);
     }
-
-    if (allValid && points.length >= 2) {
-      // Stress coloring for non-frame threads
-      if (thread.type !== 'frame') {
-        const firstSpring = world.springMap.get(thread.springIds[0]);
-        if (firstSpring) {
-          const nodeA = world.nodeMap.get(firstSpring.nodeA)!;
-          const nodeB = world.nodeMap.get(firstSpring.nodeB)!;
-          const currentLen = Math.hypot(nodeB.x - nodeA.x, nodeB.y - nodeA.y);
-          const stressRatio = currentLen / firstSpring.maxExtension;
-          if (stressRatio > 0.7) {
-            const t = Math.min(1, (stressRatio - 0.7) / 0.3);
-            // Blend toward warm red/orange as stress increases
-            const r = Math.round(255 * t);
-            const g = Math.round(150 * t);
-            color = `rgba(${Math.max(r, 80)}, ${g}, ${Math.round(40 * (1 - t))}, ${0.4 + t * 0.4})`;
-          }
-        }
-      }
-
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
-      ctx.stroke();
-    }
+    bucket.push(i);
   }
-
-  // Draw any unthreaded springs (shouldn't happen normally, but safety)
-  for (const spring of world.springs) {
-    if (spring.broken || drawnSprings.has(spring.id)) continue;
-    const nodeA = world.nodeMap.get(spring.nodeA);
-    const nodeB = world.nodeMap.get(spring.nodeB);
-    if (!nodeA || !nodeB) continue;
-
+  const seg = frame.segments;
+  for (const [key, indices] of buckets) {
+    ctx.strokeStyle = palette[Math.floor(key / SEGMENT_WIDTHS.length)];
+    ctx.lineWidth = SEGMENT_WIDTHS[key % SEGMENT_WIDTHS.length];
     ctx.beginPath();
-    ctx.moveTo(nodeA.x, nodeA.y);
-    ctx.lineTo(nodeB.x, nodeB.y);
-    ctx.strokeStyle = spring.color;
-    ctx.lineWidth = spring.type === 'capture' ? 1 : 1.5;
+    for (const i of indices) {
+      const o = i * 4;
+      ctx.moveTo(seg[o], seg[o + 1]);
+      ctx.lineTo(seg[o + 2], seg[o + 3]);
+    }
     ctx.stroke();
   }
 
-  // Draw live prey: a dark body with a wing blur, tinted while it is stuck to
-  // silk and thrashing.
-  for (const fly of snapshot.flies) {
-    const stuck = fly.nodeId >= 0;
-    const radius = 1.2 + fly.mass * 3;
-    const buzz = Math.sin(snapshot.globalTime * 40 + fly.id) * (stuck ? 2 : 1);
+  // Live prey: a dark body with a wing blur, tinted while stuck and thrashing.
+  const flies = frame.flies;
+  for (let o = 0; o < flies.length; o += FLY_STRIDE) {
+    const x = flies[o];
+    const y = flies[o + 1];
+    const stuck = flies[o + 4] > 0;
+    const radius = 1.2 + flies[o + 2] * 3;
+    const buzz =
+      Math.sin(frame.globalTime * 40 + flies[o + 3]) * (stuck ? 2 : 1);
 
     ctx.save();
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = stuck ? '#ffcc66' : '#cfd6ff';
     ctx.beginPath();
-    ctx.ellipse(fly.x, fly.y, radius * 2.2, radius * 0.9, buzz * 0.2, 0, TAU);
+    ctx.ellipse(x, y, radius * 2.2, radius * 0.9, buzz * 0.2, 0, TAU);
     ctx.fill();
     ctx.restore();
 
     ctx.fillStyle = stuck ? '#ffaa33' : '#20242f';
     ctx.beginPath();
-    ctx.arc(fly.x, fly.y, radius, 0, TAU);
+    ctx.arc(x, y, radius, 0, TAU);
     ctx.fill();
     ctx.strokeStyle = stuck ? 'rgba(255,180,80,0.9)' : 'rgba(200,210,255,0.8)';
     ctx.lineWidth = 0.8;
     ctx.stroke();
   }
 
-  // Draw agents
-  snapshot.agents.forEach((agent) => {
-    // Draw caught flies
-    ctx.fillStyle = '#ffaa00';
-    agent.fliesCaught.forEach((fly) => {
-      const alpha = Math.max(0, 1 - fly.ageMs / 6000);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.beginPath();
-      ctx.arc(fly.x, fly.y, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    });
+  // Where flies were eaten, fading out.
+  const marks = frame.marks;
+  ctx.fillStyle = '#ffaa00';
+  for (let o = 0; o < marks.length; o += MARK_STRIDE) {
+    ctx.globalAlpha = marks[o + 2];
+    ctx.beginPath();
+    ctx.arc(marks[o], marks[o + 1], 1.5, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 
-    if (!agent.alive) return;
+  // Spiders.
+  const agents = frame.agents;
+  for (let o = 0; o < agents.length; o += AGENT_STRIDE) {
+    const x = agents[o];
+    const y = agents[o + 1];
+    const angle = agents[o + 2];
+    const bodyScale = agents[o + 3];
+    const color = palette[agents[o + 7]];
+    const webColor = palette[agents[o + 8]];
 
-    // Draw active drop line (dragline)
-    if (agent.state === 'falling' && agent.dropStartPos) {
-      ctx.strokeStyle = agent.webColor;
+    if (agents[o + 4] > 0) {
+      // The dragline being paid out.
+      ctx.strokeStyle = webColor;
       ctx.lineWidth = 2;
       ctx.globalAlpha = 0.5;
       ctx.beginPath();
-      ctx.moveTo(agent.dropStartPos.x, agent.dropStartPos.y);
-      ctx.lineTo(agent.x, agent.y);
+      ctx.moveTo(agents[o + 5], agents[o + 6]);
+      ctx.lineTo(x, y);
       ctx.stroke();
       ctx.globalAlpha = 1;
       ctx.lineWidth = 1;
     }
 
-    // Draw spider body
     ctx.save();
-    ctx.translate(agent.x, agent.y);
+    ctx.translate(x, y);
+    ctx.rotate(angle);
 
-    if (agent.state === 'crawling') {
-      const spring = world.springMap.get(agent.currentSpringId);
-      if (spring) {
-        const nodeA = world.nodeMap.get(spring.nodeA);
-        const nodeB = world.nodeMap.get(spring.nodeB);
-        if (nodeA && nodeB) {
-          const angle = Math.atan2(nodeB.y - nodeA.y, nodeB.x - nodeA.x);
-          ctx.rotate(angle);
-        }
-      }
-    } else {
-      const angle = Math.atan2(agent.vy, agent.vx);
-      ctx.rotate(angle);
-    }
-
-    const bodyScale = Math.min(1.4, 0.7 + agent.genome.bodyMass * 0.4);
-    ctx.fillStyle = agent.color;
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 6 * bodyScale, 3 * bodyScale, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 6 * bodyScale, 3 * bodyScale, 0, 0, TAU);
     ctx.fill();
 
-    ctx.strokeStyle = agent.color;
-    const wiggle = Math.sin(snapshot.globalTime * 10 + agent.legPhase) * 2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    const wiggle = Math.sin(frame.globalTime * 10 + agents[o + 9]) * 2;
     for (let i = -1; i <= 1; i += 2) {
       ctx.beginPath();
       ctx.moveTo(0, 0);
@@ -201,5 +133,27 @@ export function draw(
       ctx.stroke();
     }
     ctx.restore();
+  }
+}
+
+/** The canvas while graphics are switched off: a note, nothing else. */
+export function drawIdle(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  lines: readonly string[],
+): void {
+  ctx.fillStyle = BACKGROUND;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(160, 160, 255, 0.5)';
+  ctx.font = '12px "Courier New", Courier, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    ctx.fillText(
+      line,
+      width / 2,
+      height / 2 + (i - (lines.length - 1) / 2) * 18,
+    );
   });
 }

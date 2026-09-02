@@ -2,6 +2,7 @@ import { getIntersection } from '../geometry';
 import type { Rng } from '../rng';
 import type { SilkProfile, SilkType } from '../types';
 import { PHYSICS } from './config';
+import { gridAddSpring, markGeometryChanged, springsInBox } from './grid';
 import type { PhysicsNode, PhysicsWorld, Spring, Thread } from './types';
 
 export function createWorld(): PhysicsWorld {
@@ -18,6 +19,9 @@ export function createWorld(): PhysicsWorld {
     springMap: new Map(),
     threadMap: new Map(),
     nodeAdjacency: new Map(),
+    geometryVersion: 0,
+    motion: 0,
+    grid: null,
   };
 }
 
@@ -60,10 +64,17 @@ export function addSpring(
   ownerAgentId: number,
   color: string,
 ): Spring {
+  const a = world.nodeMap.get(nodeAId);
+  const b = world.nodeMap.get(nodeBId);
+  if (!a || !b) {
+    throw new Error(`addSpring: unknown node ${a ? nodeBId : nodeAId}`);
+  }
   const spring: Spring = {
     id: world.nextSpringId++,
     nodeA: nodeAId,
     nodeB: nodeBId,
+    a,
+    b,
     restLength,
     stiffness,
     damping,
@@ -83,6 +94,7 @@ export function addSpring(
   const adjB = world.nodeAdjacency.get(nodeBId);
   if (adjB) adjB.push(spring.id);
 
+  gridAddSpring(world, spring);
   return spring;
 }
 
@@ -544,8 +556,17 @@ export function rayVsSprings(
     t: number;
   } | null = null;
 
-  for (let i = 0; i < world.springs.length; i++) {
-    const spring = world.springs[i];
+  // Only springs whose box overlaps the ray's can cross it; the grid hands
+  // them over in array order, so ties resolve as a full scan would.
+  const candidates = springsInBox(
+    world,
+    Math.min(x1, x2),
+    Math.min(y1, y2),
+    Math.max(x1, x2),
+    Math.max(y1, y2),
+  );
+  for (let i = 0; i < candidates.length; i++) {
+    const spring = candidates[i];
     if (spring.broken) continue;
     if (spring.ownerAgentId === -1) continue; // skip frame springs for fly detection
     if (filterOwner != null && spring.ownerAgentId !== filterOwner) continue;
@@ -868,6 +889,8 @@ export function cleanup(world: PhysicsWorld): void {
       world.nodes.splice(i, 1);
     }
   }
+
+  markGeometryChanged(world);
 }
 
 /**

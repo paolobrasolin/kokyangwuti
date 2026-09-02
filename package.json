@@ -10,7 +10,10 @@
     "format": "biome format --write",
     "preview": "rsbuild preview",
     "test": "rstest",
-    "test:watch": "rstest --watch"
+    "test:slow": "rstest run -c rstest.slow.config.ts",
+    "test:watch": "rstest --watch",
+    "bench": "rstest run --include 'bench/**/*.bench.ts' --testTimeout 600000 --disableConsoleIntercept",
+    "headless": "node --import ./bench/register.mjs bench/run.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",

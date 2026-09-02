@@ -1,5 +1,34 @@
 import { GENOME_RANGES } from '../config';
+import type { EngineKind } from '../engine/client';
 import type { Genome, LogType, UIRefs, UiStats } from '../types';
+
+/** Page-side state the presenter shows alongside the simulation's stats. */
+export interface ViewState {
+  engine: EngineKind;
+  graphics: boolean;
+}
+
+/** "12x" style: one decimal below ten, whole numbers above. */
+export function formatSpeed(speed: number): string {
+  return speed >= 10 ? speed.toFixed(0) : speed.toFixed(1);
+}
+
+/**
+ * The speed button's label. The measured speed is shown in brackets whenever
+ * it is the more honest number: always for Max, and for a fixed target only
+ * when the machine is falling noticeably short of it.
+ */
+export function speedLabel(target: number, measured: number | null): string {
+  if (!Number.isFinite(target)) {
+    return measured === null
+      ? 'Speed: Max'
+      : `Speed: Max (${formatSpeed(measured)}x)`;
+  }
+  const lagging = measured !== null && measured < target * 0.85;
+  return lagging
+    ? `Speed: ${target}x (${formatSpeed(measured)}x)`
+    : `Speed: ${target}x`;
+}
 
 const LABEL_COLORS: Record<string, string> = {
   angleGapThreshold: '#4fc3f7',
@@ -9,7 +38,7 @@ const LABEL_COLORS: Record<string, string> = {
   bodyMass: '#f06292',
 };
 
-export function renderUI(ui: UIRefs, stats: UiStats): void {
+export function renderUI(ui: UIRefs, stats: UiStats, view: ViewState): void {
   ui.gen.textContent = `GEN ${stats.generation}`;
   ui.timer.textContent = `${(stats.timerMs / 1000).toFixed(1)}s`;
   ui.pop.textContent = String(stats.activeCount);
@@ -44,7 +73,14 @@ export function renderUI(ui: UIRefs, stats: UiStats): void {
   ui.webThreads.textContent = web ? String(web.threadCount) : '--';
   ui.webFlies.textContent = web ? String(web.fliesCaught) : '--';
 
-  ui.speedBtn.textContent = `Speed: ${stats.simSpeed}x`;
+  ui.speedBtn.textContent = speedLabel(stats.targetSpeed, stats.measuredSpeed);
+  ui.rateVal.textContent =
+    stats.measuredSpeed === null
+      ? '--'
+      : `${formatSpeed(stats.measuredSpeed)}x`;
+  ui.engineVal.textContent =
+    view.engine === 'worker' ? 'background thread' : 'page thread';
+  ui.graphicsBtn.textContent = view.graphics ? 'Graphics: On' : 'Graphics: Off';
   ui.popInput.value = String(stats.targetPopulation);
   ui.food.value = String(Math.round(stats.flyRate * 200));
   ui.immortalBtn.textContent = stats.immortality

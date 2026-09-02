@@ -1,37 +1,55 @@
+/**
+ * The page's frame loop. It never advances the simulation — the engine does
+ * that on its own clock — it only asks for a picture (or just the numbers)
+ * once per animation frame, and only after the previous answer has arrived.
+ *
+ * `requestAnimationFrame` stops while the tab is hidden, so a hidden page asks
+ * for nothing and the simulation runs on undisturbed.
+ */
+
+import type { Engine } from './engine/client';
+import type { RenderFrame } from './render/frame';
 import type { UiStats } from './types';
 
-interface LoopOptions {
-  getSimSpeed: () => number;
-  update: (dt: number) => UiStats;
-  render: () => void;
+export interface RenderLoopOptions {
+  engine: Engine;
+  /** Whether a render frame is wanted now; false asks for stats only. */
+  wantsRender: () => boolean;
+  onFrame: (stats: UiStats, frame: RenderFrame | null) => void;
+  /** Stats refresh period while not rendering, ms. */
+  statsIntervalMs?: number;
+  /** Give up waiting for an answer after this long and ask again, ms. */
+  timeoutMs?: number;
+  requestAnimationFrame?: (callback: FrameRequestCallback) => number;
 }
 
-export function startLoop({ getSimSpeed, update, render }: LoopOptions): void {
-  const stepCounts = [
-    { speed: 10000, steps: 100 },
-    { speed: 1000, steps: 50 },
-    { speed: 100, steps: 20 },
-    { speed: 10, steps: 5 },
-  ];
+export function startRenderLoop(options: RenderLoopOptions): void {
+  const raf =
+    options.requestAnimationFrame ??
+    ((callback: FrameRequestCallback) => requestAnimationFrame(callback));
+  const statsInterval = options.statsIntervalMs ?? 250;
+  const timeout = options.timeoutMs ?? 2000;
 
-  const frame = () => {
-    const simSpeed = getSimSpeed();
-    let steps = 1;
-    for (const entry of stepCounts) {
-      if (simSpeed >= entry.speed) {
-        steps = entry.steps;
-        break;
+  let pending = false;
+  let requestedAt = 0;
+  let lastStatsAt = Number.NEGATIVE_INFINITY;
+
+  const frame = (now: number) => {
+    if (pending && now - requestedAt > timeout) pending = false;
+    if (!pending) {
+      const render = options.wantsRender();
+      if (render || now - lastStatsAt >= statsInterval) {
+        pending = true;
+        requestedAt = now;
+        options.engine.requestFrame(render, (stats, picture) => {
+          pending = false;
+          lastStatsAt = now;
+          options.onFrame(stats, picture);
+        });
       }
     }
-
-    const dt = (16 * simSpeed) / steps;
-    for (let i = 0; i < steps; i++) {
-      update(dt);
-    }
-
-    render();
-    requestAnimationFrame(frame);
+    raf(frame);
   };
 
-  requestAnimationFrame(frame);
+  raf(frame);
 }

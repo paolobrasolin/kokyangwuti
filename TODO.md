@@ -32,8 +32,22 @@ synthesis and is still the authority on what may exist in the simulation layer.
 - [x] **Fitness is causal and comparable.** Energy is scored as a delta from
       birth, closing the body-mass loophole; reported and recorded fitness is
       normalised by the prey the generation offered.
-- [x] Tests: 198 across rng, geometry, solver, world, senses, construction,
-      capture, evolution, fast-forward and an entry-point boot smoke test.
+- [x] **Speed is scheduling, not simulation.** The engine (`src/engine/`)
+      always steps the world by `TICK_MS`; speed only sets how many ticks run
+      per wall-clock second, and Max runs as many as the CPU allows. The
+      solver-off fast path and the reduced-iteration branch are gone, so a run
+      is bit-identical at every speed. The simulation lives in a Web Worker and
+      keeps its pace while the tab is hidden; the page draws packed frames.
+- [x] **Thread queries are local.** A uniform grid over the springs
+      (`src/physics/grid.ts`) answers fly sweeps, dragline casts and leg-sweep
+      senses with exactly the candidates a full scan would return, in the same
+      order. Together with node refs cached on springs this took a generation
+      at population 8 from ~5 s to ~2 s with unchanged golden checksums
+      (`bench/golden.bench.ts`).
+- [x] Tests: 230 in the fast suite across rng, geometry, solver, world, senses,
+      construction, capture, evolution, long ticks, engine, render frames and
+      an entry-point boot smoke test; 6 statistical selection tests in
+      `npm run test:slow`.
 
 ## Next
 
@@ -75,8 +89,15 @@ synthesis and is still the authority on what may exist in the simulation layer.
       per-thread capture counts, no way to inspect a single spider.
 - [ ] The fitness history (`evolution.fitnessHistory`) is recorded and never
       drawn.
-- [ ] Speed 10000 degrades construction fidelity to keep the frame alive; the UI
-      does not say so.
+
+### Performance
+
+- [ ] The solver is ~60% of a tick. The next step would be a struct-of-arrays
+      layout (typed arrays for positions and spring endpoints) rather than
+      objects; everything else is already local.
+- [ ] Population 24+ webs hold ~10k springs and run at ~10x. Per-agent arenas
+      (see "Break the prey ceiling") would also make them independent and
+      trivially parallel across workers.
 
 ### Housekeeping
 

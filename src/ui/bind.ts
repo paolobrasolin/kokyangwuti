@@ -1,4 +1,5 @@
 import type { UIRefs } from '../types';
+import { speedLabel } from './presenter';
 
 interface UiHandlers {
   onSpeedChange: () => number;
@@ -6,12 +7,13 @@ interface UiHandlers {
   onFlyRateChange: (value: number) => void;
   onTogglePanel: (visible: boolean) => void;
   onImmortalToggle: () => boolean;
+  onGraphicsToggle: () => boolean;
 }
 
 export function bindUI(ui: UIRefs, handlers: UiHandlers): void {
   ui.speedBtn.addEventListener('click', () => {
     const speed = handlers.onSpeedChange();
-    ui.speedBtn.textContent = `Speed: ${speed}x`;
+    ui.speedBtn.textContent = speedLabel(speed, null);
   });
 
   ui.popInput.addEventListener('input', (event) => {
@@ -33,5 +35,10 @@ export function bindUI(ui: UIRefs, handlers: UiHandlers): void {
   ui.immortalBtn.addEventListener('click', () => {
     const on = handlers.onImmortalToggle();
     ui.immortalBtn.textContent = on ? 'Immortal: On' : 'Immortal: Off';
+  });
+
+  ui.graphicsBtn.addEventListener('click', () => {
+    const on = handlers.onGraphicsToggle();
+    ui.graphicsBtn.textContent = on ? 'Graphics: On' : 'Graphics: Off';
   });
 }

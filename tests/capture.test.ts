@@ -9,11 +9,7 @@ import {
   getSilkProfile,
   startGeneration,
 } from '../src/simulation/lifecycle';
-import {
-  physicsSkipped,
-  resolveWithoutSolver,
-  stepPrey,
-} from '../src/simulation/prey';
+import { stepPrey } from '../src/simulation/prey';
 import {
   createEvolutionState,
   createSimulationState,
@@ -39,7 +35,6 @@ function makeControls(
   overrides: Partial<SimulationControls> = {},
 ): SimulationControls {
   return {
-    simSpeed: 1,
     flyRate: 0,
     targetPopulation: 1,
     immortality: true,
@@ -122,9 +117,7 @@ function makeFly(
 /** One tick of prey + solver, in the same order `updateTick` runs them. */
 function tick(state: SimulationState, controls: SimulationControls): void {
   stepPrey(state, controls, CONFIG, DT);
-  if (!physicsSkipped(controls)) {
-    stepPhysics(state.world, DT, PHYSICS.constraintIterations);
-  }
+  stepPhysics(state.world, DT, PHYSICS.constraintIterations);
 }
 
 interface Outcome {
@@ -392,76 +385,6 @@ describe('flies come and go', () => {
     expect(state.flies.length).toBeLessThanOrEqual(FLY.maxLive);
     // Every tick still drew a spawn, cap or no cap.
     expect(state.nextFlyId).toBe(300);
-  });
-});
-
-// ========== FAST-FORWARD ==========
-
-describe('fast-forward falls back without the solver', () => {
-  const fast = makeControls({ simSpeed: PHYSICS.skipPhysicsSpeed });
-
-  test('a slow, light fly is still mostly held by capture silk', () => {
-    let caught = 0;
-    for (let i = 0; i < 12; i++) {
-      const { state, agent } = arena();
-      tautThread(state, agent, 'capture');
-      agent.rng = state.rng.fork(`ff-${i}`);
-      const fly = makeFly(state, FLY.minMass, FLY.minSpeed);
-      resolveWithoutSolver(state, CONFIG, fly);
-      if (agent.score > 0) caught++;
-    }
-    expect(caught).toBeGreaterThanOrEqual(9);
-  });
-
-  test('an impact past the silk capacity breaks it instead', () => {
-    const { state, agent } = arena();
-    tautThread(state, agent, 'radial');
-    const fly = makeFly(state, FLY.maxMass, FLY.maxSpeed * 2);
-
-    const before = state.world.springs.filter(
-      (s) => !s.broken && s.ownerAgentId === agent.id,
-    ).length;
-    resolveWithoutSolver(state, CONFIG, fly);
-
-    expect(agent.score).toBe(0);
-    expect(
-      state.world.springs.filter(
-        (s) => !s.broken && s.ownerAgentId === agent.id,
-      ).length,
-    ).toBe(before - 1);
-  });
-
-  test('a fly can never be left hanging while the solver is off', () => {
-    const { state, agent } = arena();
-    tautThread(state, agent, 'capture');
-    makeFly(state, 0.3, 4);
-
-    // Couple it for real, then switch into fast-forward.
-    for (let i = 0; i < 30 && state.flies[0]?.nodeId < 0; i++)
-      tick(state, makeControls());
-    expect(state.flies[0]?.nodeId).toBeGreaterThanOrEqual(0);
-
-    stepPrey(state, fast, CONFIG, DT);
-    expect(state.flies).toHaveLength(0);
-    expect(
-      state.world.nodes.every((n) => n.mass === PHYSICS.defaultNodeMass),
-    ).toBe(true);
-  });
-
-  test('the solver never runs, so no node moves', () => {
-    const { state, agent } = arena();
-    tautThread(state, agent, 'capture');
-    const positions = state.world.nodes.map((n) => [n.x, n.y]);
-    const controls = makeControls({
-      simSpeed: PHYSICS.skipPhysicsSpeed,
-      flyRate: 1,
-    });
-
-    for (let i = 0; i < 400; i++) updateTick(state, controls, CONFIG, DT);
-
-    expect(state.world.nodes.map((n) => [n.x, n.y])).toEqual(positions);
-    expect(state.nextFlyId).toBe(400);
-    expect(agent.score).toBeGreaterThan(0);
   });
 });
 

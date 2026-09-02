@@ -9,6 +9,7 @@
  */
 
 import { distToSegment } from '../geometry';
+import { springsNear } from '../physics/grid';
 import type { PhysicsWorld } from '../physics/types';
 import { getConnectedSprings } from '../physics/world';
 import type { SilkType } from '../types';
@@ -133,7 +134,7 @@ export function localSilkDensity(
 ): number {
   if (radius <= 0) return 0;
   let total = 0;
-  for (const spring of world.springs) {
+  for (const spring of springsNear(world, x, y, radius)) {
     if (spring.broken || spring.ownerAgentId !== agentId) continue;
     const nodeA = world.nodeMap.get(spring.nodeA);
     const nodeB = world.nodeMap.get(spring.nodeB);
@@ -193,7 +194,10 @@ export function nearestOwnSilk(
   let by = 0;
   let found = false;
 
-  for (const spring of world.springs) {
+  const candidates = Number.isFinite(maxDist)
+    ? springsNear(world, x, y, maxDist)
+    : world.springs;
+  for (const spring of candidates) {
     if (spring.broken || spring.ownerAgentId !== agentId) continue;
     if (spring.type !== type) continue;
     const nodeA = world.nodeMap.get(spring.nodeA);
@@ -228,7 +232,9 @@ export function structureDirection(
 ): { ux: number; uy: number } {
   let sx = 0;
   let sy = 0;
-  for (const spring of world.springs) {
+  // Only a spring whose midpoint is within `radius` counts, and such a spring
+  // must overlap the box around the point.
+  for (const spring of springsNear(world, x, y, radius)) {
     if (spring.broken || spring.ownerAgentId === -1) continue;
     const nodeA = world.nodeMap.get(spring.nodeA);
     const nodeB = world.nodeMap.get(spring.nodeB);

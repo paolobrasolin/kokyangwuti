@@ -1,4 +1,5 @@
 import type { SilkType } from '../types';
+import type { SpringGrid } from './grid';
 
 export interface PhysicsNode {
   id: number;
@@ -17,6 +18,9 @@ export interface Spring {
   id: number;
   nodeA: number; // node id
   nodeB: number; // node id
+  /** The endpoint nodes themselves. A live spring's nodes are never removed. */
+  a: PhysicsNode;
+  b: PhysicsNode;
   restLength: number;
   stiffness: number;
   damping: number;
@@ -52,4 +56,18 @@ export interface PhysicsWorld {
   threadMap: Map<number, Thread>;
   // Adjacency: nodeId -> springIds connected to it
   nodeAdjacency: Map<number, number[]>;
+  /**
+   * Bumped whenever node positions may have moved (solver step, cleanup).
+   * Spatial queries rebuild `grid` when it falls behind this. Code that moves
+   * nodes by hand must call `markGeometryChanged`.
+   */
+  geometryVersion: number;
+  /**
+   * Running sum of the largest single-node displacement of every solver step.
+   * A bound on how far any node has drifted since some earlier moment, used
+   * to decide when the spatial index must be rebuilt.
+   */
+  motion: number;
+  /** Spatial index over the springs; built on first use. See `grid.ts`. */
+  grid: SpringGrid | null;
 }

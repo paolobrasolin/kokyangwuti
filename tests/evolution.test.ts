@@ -395,7 +395,6 @@ describe('selection optimizes', () => {
 
 function makeControls(targetPopulation: number): SimulationControls {
   return {
-    simSpeed: 1,
     flyRate: 0.3,
     targetPopulation,
     immortality: false,

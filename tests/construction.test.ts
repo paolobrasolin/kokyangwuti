@@ -27,7 +27,6 @@ const SEED = 20260829;
  */
 function makeControls(): SimulationControls {
   return {
-    simSpeed: 1,
     flyRate: 0,
     targetPopulation: POPULATION,
     immortality: false,

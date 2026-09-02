@@ -226,8 +226,13 @@ export interface SimulationState {
   cleanupCounter: number;
 }
 
+/**
+ * Everything the *simulation* can be told from outside. Deliberately free of
+ * any notion of speed: how many ticks run per wall-clock second is the
+ * scheduler's business (`src/engine/scheduler.ts`), and the simulation must
+ * come out identical whatever that number is.
+ */
 export interface SimulationControls {
-  simSpeed: number;
   flyRate: number;
   targetPopulation: number;
   immortality: boolean;
@@ -253,6 +258,9 @@ export interface UIRefs {
   popInput: HTMLInputElement;
   food: HTMLInputElement;
   speedBtn: HTMLButtonElement;
+  graphicsBtn: HTMLButtonElement;
+  engineVal: HTMLElement;
+  rateVal: HTMLElement;
   log: HTMLElement;
   uiLayer: HTMLElement;
   toggleBtn: HTMLButtonElement;
@@ -274,7 +282,10 @@ export interface UiStats {
   /** Web metrics of the last generation's best agent, if there was one. */
   bestMetrics: WebMetrics | null;
   bestGenome: Genome;
-  simSpeed: number;
+  /** Speed the user asked for; `Infinity` is Max. */
+  targetSpeed: number;
+  /** Speed actually achieved over the last second, or null if unknown yet. */
+  measuredSpeed: number | null;
   flyRate: number;
   targetPopulation: number;
   maxEnergy: number;
@@ -282,13 +293,7 @@ export interface UiStats {
   immortality: boolean;
 }
 
-export interface RenderSnapshot {
-  world: PhysicsWorld;
-  agents: Agent[];
-  flies: Fly[];
-  width: number;
-  height: number;
-  globalTime: number;
-}
+/** What the simulation controller itself can report; the engine adds speed. */
+export type SimStats = Omit<UiStats, 'targetSpeed' | 'measuredSpeed'>;
 
 export type LogType = 'highlight' | 'danger' | '';

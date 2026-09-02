@@ -7,9 +7,6 @@ export const PHYSICS = {
   defaultNodeMass: 0.1,
   spiderMassMultiplier: 5.0,
   constraintIterations: 6,
-  reducedIterations: 3,
-  skipPhysicsSpeed: 1000,
-  reducedIterationsSpeed: 20,
   cleanupInterval: 60,
   breakingThreshold: 1.0, // fraction above maxExtension that causes break
 };

@@ -1,6 +1,18 @@
 import type { Genome } from './types';
 
-export const SPEED_STEPS = [1, 5, 20, 100, 1000, 10000] as const;
+/**
+ * Duration of one simulation tick, ms. Every rate constant in the simulation
+ * ("px per 16 ms", "chance per 16 ms") is calibrated against it, and the
+ * engine only ever advances the world by whole ticks of this length.
+ */
+export const TICK_MS = 16;
+
+/**
+ * Speed multipliers the UI cycles through: ticks per wall-clock second, as a
+ * multiple of real time. `Infinity` is "Max" — as many ticks as the CPU can
+ * manage. Speed never reaches the simulation itself (see `SimulationControls`).
+ */
+export const SPEED_STEPS = [1, 5, 20, 100, Number.POSITIVE_INFINITY] as const;
 
 export const CONFIG = {
   startingEnergy: 2000,
@@ -67,14 +79,6 @@ export const FLY = {
   graceMs: 250,
   /** Safety despawn for a fly that never leaves the arena. */
   maxAgeMs: 30000,
-  /**
-   * Fast-forward fallback (simSpeed >= PHYSICS.skipPhysicsSpeed, solver off).
-   * `fastCapacityScale` converts a spring's elastic reserve
-   * `0.5 * stiffness * (maxExtension - restLength)^2` into the kinetic energy
-   * it can absorb; `fastHoldScale` scales adhesion into a hold probability.
-   */
-  fastCapacityScale: 0.035,
-  fastHoldScale: 0.95,
 };
 
 /** Documented mutation range of every genome field. */

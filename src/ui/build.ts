@@ -59,6 +59,12 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   statRow2.appendChild(val2);
   uiLayer.appendChild(statRow2);
 
+  // Where the simulation runs and how fast it is really going.
+  const engineRow = statRow('Engine:', 'engine-val');
+  const rateRow = statRow('Sim Rate:', 'rate-val');
+  uiLayer.appendChild(engineRow.row);
+  uiLayer.appendChild(rateRow.row);
+
   const statRow3 = document.createElement('div');
   statRow3.className = 'stat-row';
   statRow3.style.marginTop = '10px';
@@ -224,6 +230,12 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
   immortalBtn.textContent = 'Immortal: Off';
   uiLayer.appendChild(immortalBtn);
 
+  const graphicsBtn = document.createElement('button');
+  graphicsBtn.id = 'graphics-btn';
+  graphicsBtn.title = 'Stop drawing the arena; the simulation keeps running';
+  graphicsBtn.textContent = 'Graphics: On';
+  uiLayer.appendChild(graphicsBtn);
+
   const statRow4 = document.createElement('div');
   statRow4.className = 'stat-row';
   const fitnessLabel = document.createElement('span');
@@ -276,6 +288,9 @@ export function buildUI(): { ui: UIRefs; canvas: HTMLCanvasElement } {
     popInput,
     food: foodInput,
     speedBtn,
+    graphicsBtn,
+    engineVal: engineRow.value,
+    rateVal: rateRow.value,
     log: logConsole,
     uiLayer,
     toggleBtn,

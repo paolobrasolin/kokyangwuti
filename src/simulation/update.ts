@@ -1,6 +1,7 @@
 import type { Config } from '../config';
 import { distToSegment, getIntersection } from '../geometry';
 import { PHYSICS } from '../physics/config';
+import { springsInBox, springsNear } from '../physics/grid';
 import { applyForceToSpring, stepPhysics } from '../physics/solver';
 import type { PhysicsWorld } from '../physics/types';
 import {
@@ -19,7 +20,7 @@ import type {
   SimulationState,
 } from '../types';
 import { getSilkProfile } from './lifecycle';
-import { physicsSkipped, stepPrey } from './prey';
+import { stepPrey } from './prey';
 import {
   nearestOwnSilk,
   SENSE_RADIUS,
@@ -66,7 +67,7 @@ const MODE_HYSTERESIS = 2;
  * mid-thread, gap filling fires on arrival at a junction, and both are only
  * reachable if a step moves the agent by less than the length of the segment it
  * is standing on. A spider covers `(2 + speed * 2) * dt / 16` px per step, so at
- * `dt = 320` (simSpeed 1000) even the slowest genome clears 80 px — more than
+ * `dt = 320` (the old 1000x fast-forward) even the slowest genome clears 80 px — more than
  * three `PHYSICS.segmentLength` segments — and every step lands on the junction
  * branch. `applyMidThreadRules` then never runs, no exploratory drop ever fires,
  * and the whole population builds nothing.
@@ -74,14 +75,17 @@ const MODE_HYSTERESIS = 2;
  * 32 ms is the same ceiling the solver already clamps to (`PHYSICS.maxDt`), and
  * bounds the fastest genome to 12 px per step: below a segment, and below
  * `MIN_WALK_BETWEEN_LAUNCHES`, so no rule can be skipped over.
+ *
+ * The app itself never leans on this: its scheduler always advances the world
+ * in fixed `TICK_MS` (16 ms) ticks and varies *how many* run per wall-clock
+ * second, never how long one is. The splitting is a guard for other callers.
  */
 export const MAX_SUBSTEP_DT = 32;
 
 /**
- * Hard cap on substeps per tick. Fidelity costs wall time — the substeps of one
- * tick are as expensive as the same span run in real time — so beyond simSpeed
- * 1000 (`dt` 320, exactly 10 substeps) the cap trades accuracy back for a frame
- * that still returns. Everything at or below 1000x is simulated in full.
+ * Hard cap on substeps per tick, so a caller passing an absurd `dt` still gets
+ * a tick that returns. Up to `MAX_SUBSTEPS * MAX_SUBSTEP_DT` (512 ms) a long
+ * tick is simulated in full.
  */
 export const MAX_SUBSTEPS = 16;
 
@@ -153,28 +157,23 @@ function substep(
   // solver below integrates it in the same substep.
   stepPrey(state, controls, config, dt);
 
-  if (!physicsSkipped(controls)) {
-    const iterations =
-      controls.simSpeed >= PHYSICS.reducedIterationsSpeed
-        ? PHYSICS.reducedIterations
-        : PHYSICS.constraintIterations;
-
-    for (const agent of state.agents) {
-      if (!agent.alive || agent.state !== 'crawling') continue;
-      const spring = state.world.springMap.get(agent.currentSpringId);
-      if (!spring || spring.broken) continue;
-      const weight = agent.genome.bodyMass * PHYSICS.spiderMassMultiplier;
-      applyForceToSpring(
-        state.world,
-        agent.currentSpringId,
-        agent.tOnSpring,
-        0,
-        weight,
-      );
-    }
-
-    stepPhysics(state.world, dt, iterations);
+  // The solver always runs, at full iteration count. There is no cheaper
+  // physics for fast-forward: speed is how many of these substeps happen per
+  // wall-clock second, and nothing else.
+  for (const agent of state.agents) {
+    if (!agent.alive || agent.state !== 'crawling') continue;
+    const spring = state.world.springMap.get(agent.currentSpringId);
+    if (!spring || spring.broken) continue;
+    const weight = agent.genome.bodyMass * PHYSICS.spiderMassMultiplier;
+    applyForceToSpring(
+      state.world,
+      agent.currentSpringId,
+      agent.tOnSpring,
+      0,
+      weight,
+    );
   }
+  stepPhysics(state.world, dt, PHYSICS.constraintIterations);
 
   for (const agent of state.agents) {
     if (!agent.alive) continue;
@@ -557,7 +556,14 @@ function updateFall(
   let hit: LandingHit | null = null;
   let minDist = Number.POSITIVE_INFINITY;
 
-  for (const spring of state.world.springs) {
+  const candidates = springsInBox(
+    state.world,
+    Math.min(agent.x, nextX),
+    Math.min(agent.y, nextY),
+    Math.max(agent.x, nextX),
+    Math.max(agent.y, nextY),
+  );
+  for (const spring of candidates) {
     if (spring.broken) continue;
     if (spring.ownerAgentId !== agent.id && spring.ownerAgentId !== -1)
       continue;
@@ -774,7 +780,7 @@ function isCrowded(
   const midX = (startX + endX) * 0.5;
   const midY = (startY + endY) * 0.5;
 
-  for (const spring of state.world.springs) {
+  for (const spring of springsNear(state.world, midX, midY, 4)) {
     if (spring.broken) continue;
     if (spring.ownerAgentId !== agent.id && spring.ownerAgentId !== -1)
       continue;

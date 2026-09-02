@@ -1,52 +1,76 @@
 import './index.css';
-import { CONFIG } from './config';
-import { startLoop } from './loop';
+import { CONFIG, SPEED_STEPS } from './config';
+import { createEngine } from './engine/client';
+import { startRenderLoop } from './loop';
 import { resizeCanvas, setupCanvas } from './render/canvas';
-import { draw } from './render/draw';
-import { createSimulationController } from './simulation/controller';
+import { draw, drawIdle } from './render/draw';
 import { bindUI } from './ui/bind';
 import { buildUI } from './ui/build';
-import { createLogger, renderUI } from './ui/presenter';
+import { createLogger, renderUI, type ViewState } from './ui/presenter';
+
+const IDLE_LINES = [
+  'graphics off',
+  'the simulation is still running; stats update above',
+] as const;
 
 const { ui, canvas } = buildUI();
 const logger = createLogger(ui, CONFIG.logMaxEntries);
+const ctx = setupCanvas(canvas);
+resizeCanvas(canvas, window.innerWidth, window.innerHeight);
 
-const controller = createSimulationController({
-  config: CONFIG,
-  logger,
-  onNewBest: (fitness) => {
-    const best = Number.isFinite(fitness) ? fitness : 0;
-    ui.bestFit.textContent = best.toFixed(0);
+let speedIndex = 0;
+let immortal = false;
+
+// The simulation lives in a worker where it can: it keeps its pace while the
+// tab is hidden, and the page only ever draws what it is handed.
+const engine = createEngine({
+  width: canvas.width,
+  height: canvas.height,
+  controls: {
+    speed: SPEED_STEPS[speedIndex],
+    flyRate: CONFIG.defaultFlyRate,
+    population: CONFIG.defaultPopulation,
+    immortality: immortal,
   },
 });
+engine.onLog(logger);
 
-const ctx = setupCanvas(canvas);
+const view: ViewState = { engine: engine.kind, graphics: true };
 
 function handleResize(): void {
   resizeCanvas(canvas, window.innerWidth, window.innerHeight);
-  controller.resize(canvas.width, canvas.height);
+  engine.resize(canvas.width, canvas.height);
+  if (!view.graphics) drawIdle(ctx, canvas.width, canvas.height, IDLE_LINES);
 }
-
-handleResize();
 window.addEventListener('resize', handleResize);
 
 bindUI(ui, {
-  onSpeedChange: () => controller.cycleSpeed(),
-  onPopulationChange: (value) => controller.setPopulation(value),
-  onFlyRateChange: (value) => controller.setFlyRate(value),
+  onSpeedChange: () => {
+    speedIndex = (speedIndex + 1) % SPEED_STEPS.length;
+    const speed = SPEED_STEPS[speedIndex];
+    engine.setControls({ speed });
+    return speed;
+  },
+  onPopulationChange: (value) => engine.setControls({ population: value }),
+  onFlyRateChange: (value) => engine.setControls({ flyRate: value }),
   onTogglePanel: () => {},
-  onImmortalToggle: () => controller.toggleImmortality(),
+  onImmortalToggle: () => {
+    immortal = !immortal;
+    engine.setControls({ immortality: immortal });
+    return immortal;
+  },
+  onGraphicsToggle: () => {
+    view.graphics = !view.graphics;
+    if (!view.graphics) drawIdle(ctx, canvas.width, canvas.height, IDLE_LINES);
+    return view.graphics;
+  },
 });
 
-controller.start();
-renderUI(ui, controller.update(0));
-
-startLoop({
-  getSimSpeed: controller.getSimSpeed,
-  update: (dt) => {
-    const stats = controller.update(dt);
-    renderUI(ui, stats);
-    return stats;
+startRenderLoop({
+  engine,
+  wantsRender: () => view.graphics,
+  onFrame: (stats, frame) => {
+    renderUI(ui, stats, view);
+    if (frame) draw(ctx, frame);
   },
-  render: () => draw(ctx, controller.getSnapshot()),
 });

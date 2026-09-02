@@ -38,11 +38,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/** True when the tick runs without the solver (fast-forward). */
-export function physicsSkipped(controls: SimulationControls): boolean {
-  return controls.simSpeed >= PHYSICS.skipPhysicsSpeed;
-}
-
 // ========== ENTRY POINT ==========
 
 /**
@@ -56,22 +51,8 @@ export function stepPrey(
   dt: number,
 ): void {
   const spawned = rollSpawn(state, controls, dt);
-  const skip = physicsSkipped(controls);
-
-  if (spawned && !skip && state.flies.length < FLY.maxLive) {
+  if (spawned && state.flies.length < FLY.maxLive) {
     state.flies.push(spawned);
-  }
-
-  if (skip) {
-    // Degraded fast-forward path: the solver is off, so nothing would ever
-    // stretch, break or dissipate, and a coupled fly would hang forever.
-    // Anything still in the arena from a slower phase is simply released, and
-    // each new fly is resolved in one shot from the spring properties the
-    // solver would have integrated — see `resolveWithoutSolver`.
-    for (const fly of state.flies) detachFromWeb(state, fly);
-    state.flies.length = 0;
-    if (spawned) resolveWithoutSolver(state, config, spawned);
-    return;
   }
 
   for (let i = state.flies.length - 1; i >= 0; i--) {
@@ -398,64 +379,4 @@ function capture(
   agent.fliesCaught.push({ x: fly.x, y: fly.y, ageMs: 0 });
   if (agent.fliesCaught.length > config.maxFliesPerAgent)
     agent.fliesCaught.shift();
-}
-
-// ========== FAST-FORWARD FALLBACK ==========
-
-/**
- * Degraded resolution for `simSpeed >= PHYSICS.skipPhysicsSpeed`, where the
- * solver never runs and no node ever moves.
- *
- * The fly's whole remaining path is swept in one go; the first thread it meets
- * either absorbs it or breaks. "Absorbs" compares the fly's kinetic energy with
- * the elastic reserve of the spring it hit, `0.5 * k * (maxExtension -
- * restLength)^2`, i.e. the same properties the solver would have integrated;
- * the hold roll is the spring's adhesion. It is an approximation of the coupled
- * dynamics, not a re-implementation of them: web damage from a break is real,
- * but propagation, dissipation and multi-thread support are not modelled.
- */
-export function resolveWithoutSolver(
-  state: SimulationState,
-  config: Config,
-  fly: Fly,
-): void {
-  const reach = Math.hypot(state.width, state.height) + FLY.spawnMargin * 4;
-  const hit = rayVsSprings(
-    state.world,
-    fly.x,
-    fly.y,
-    fly.x + fly.hx * reach,
-    fly.y + fly.hy * reach,
-  );
-  if (!hit) return;
-
-  const spring = state.world.springMap.get(hit.springId);
-  if (!spring || spring.broken || spring.ownerAgentId < 0) return;
-
-  const owner = findAgent(state, spring.ownerAgentId);
-  if (!owner || !owner.alive) return;
-
-  const speed = Math.hypot(fly.vx, fly.vy);
-  const kinetic = 0.5 * fly.mass * speed * speed;
-  const reserve = Math.max(0, spring.maxExtension - spring.restLength);
-  const capacity =
-    0.5 * spring.stiffness * reserve * reserve * FLY.fastCapacityScale;
-
-  if (kinetic > capacity) {
-    spring.broken = true;
-    return;
-  }
-
-  // Stand-in for "the silk absorbed the impact and the adhesion held": the
-  // slower the fly relative to what this thread can absorb, the more even
-  // low-adhesion silk keeps it.
-  const spent = capacity > 0 ? clamp(kinetic / capacity, 0, 1) : 1;
-  const hold =
-    FLY.fastHoldScale * (spring.adhesion + (1 - spring.adhesion) * (1 - spent));
-
-  if (owner.rng.chance(clamp(hold, 0, 1))) {
-    fly.x = hit.point.x;
-    fly.y = hit.point.y;
-    capture(state, config, fly, owner);
-  }
 }

@@ -36,14 +36,14 @@ export function stepPhysics(
   }
 
   // 3. Constraint solving (iterative relaxation)
+  const springCount = world.springs.length;
   for (let iter = 0; iter < iterations; iter++) {
-    for (let i = 0; i < world.springs.length; i++) {
+    for (let i = 0; i < springCount; i++) {
       const spring = world.springs[i];
       if (spring.broken) continue;
 
-      const nodeA = world.nodeMap.get(spring.nodeA);
-      const nodeB = world.nodeMap.get(spring.nodeB);
-      if (!nodeA || !nodeB) continue;
+      const nodeA = spring.a;
+      const nodeB = spring.b;
 
       const dx = nodeB.x - nodeA.x;
       const dy = nodeB.y - nodeA.y;
@@ -80,12 +80,21 @@ export function stepPhysics(
     }
   }
 
-  // 4. Clear accumulators
+  // 4. Clear accumulators, and record how far the step moved anything. After
+  // the Verlet update `prev` holds the pre-step position, so `x - prevX` is
+  // exactly this step's displacement including the constraint corrections.
+  let maxMove = 0;
   for (let i = 0; i < world.nodes.length; i++) {
     const node = world.nodes[i];
     node.accX = 0;
     node.accY = 0;
+    if (node.pinned) continue;
+    const mx = Math.abs(node.x - node.prevX);
+    const my = Math.abs(node.y - node.prevY);
+    if (mx > maxMove) maxMove = mx;
+    if (my > maxMove) maxMove = my;
   }
+  world.motion += maxMove;
 }
 
 export function applyForceToSpring(
