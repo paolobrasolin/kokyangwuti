@@ -10,7 +10,8 @@ You are an expert in JavaScript, Rsbuild, and web application development. You w
 - `npm run test` - Fast test suite; `npm run test:slow` for the statistical
   selection tests (whole generations, ~30 s)
 - `npm run bench` - Headless throughput and golden-checksum benchmarks
-- `npm run headless -- --generations N --pop P` - Run generations in Node
+- `npm run headless -- --generations N --pop P` - Run generations in Node;
+  `--seeds a,b,c` or `--seeds N` runs several seeds in parallel worker threads
 
 ## Invariants
 

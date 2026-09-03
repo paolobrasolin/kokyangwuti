@@ -109,9 +109,9 @@ world, checked bit-for-bit, and timed — none paid:
 The loop is bound by the sqrt/divide chain per spring, not by memory layout.
 What is left changes the arithmetic or the design:
 
-- [ ] Parallel *runs*: N seeds in N worker threads (Node runner and/or the
-      page) is N× aggregate throughput with no change to any run. The cheap
-      lever for "a lot of generations".
+- [x] Parallel *runs*: `npm run headless -- --seeds N` runs N seeds in N
+      worker threads, N× aggregate throughput with no change to any run
+      (`bench/run.ts`, `bench/headless.ts`). The page still runs one seed.
 - [ ] Per-agent arenas (see "Break the prey ceiling") would make one run's
       agents independent and parallel too — a design change, not a refactor.
 - [ ] Fewer relaxation iterations or reciprocal-multiply normalisation would

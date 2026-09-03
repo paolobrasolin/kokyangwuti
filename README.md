@@ -83,6 +83,7 @@ npm run test       # fast rstest suite (jsdom), a few seconds
 npm run test:slow  # statistical selection tests: whole generations, ~30 s
 npm run bench      # headless throughput + golden-checksum benchmarks
 npm run headless -- --generations 20 --pop 8 --seed 1   # run generations in Node
+npm run headless -- --generations 20 --seeds 1,2,3,4    # one run per worker thread
 npm run check      # biome lint + format, writing fixes
 ```
 
