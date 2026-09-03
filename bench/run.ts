@@ -44,8 +44,9 @@ for (let g = 0; g < generations; g++) {
   ticks += n;
   const report = endGeneration(state, evolution);
   const ms = performance.now() - tg;
+  const grid = state.world.grid;
   console.log(
-    `gen ${report.generation}: best ${report.bestFitness.toFixed(0)} mean ${report.meanFitness.toFixed(0)} prey ${report.preySpawned} | ${n} ticks in ${ms.toFixed(0)} ms (${((n * DT) / ms).toFixed(1)}x)`,
+    `gen ${report.generation}: best ${report.bestFitness.toFixed(0)} mean ${report.meanFitness.toFixed(0)} prey ${report.preySpawned} | ${n} ticks in ${ms.toFixed(0)} ms (${((n * DT) / ms).toFixed(1)}x) | grid rebuilds ${grid?.rebuilds ?? 0}, refiles ${grid?.refiles ?? 0}`,
   );
 }
 const total = performance.now() - t0;

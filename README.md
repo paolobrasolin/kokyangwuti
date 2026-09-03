@@ -110,10 +110,11 @@ and the speed it is really achieving; the speed button shows the measured speed
 in brackets whenever it falls short of the target. Where `Worker` is
 unavailable the same host runs on the page thread instead.
 
-Throughput on one laptop core at 1280×720: roughly 30x real time at population
-8 and 10x at population 24, i.e. a 60 s generation in about 2 s. The solver is
-now most of a tick; the thread queries (fly sweeps, dragline casts, leg-sweep
-senses) go through a uniform grid that returns exactly the candidates a full
-scan would, in the same order, so they changed nothing but the clock.
-`bench/golden.bench.ts` prints checksums of a full generation for exactly this
-kind of claim: an optimisation that is a pure refactor leaves them unchanged.
+Throughput on one laptop core at 1280×720: roughly 50x real time at population
+8 and 16x at population 24, i.e. a 60 s generation in about 1.2 s. The solver
+is ~70% of a tick and sits at the floor for exact physics (TODO.md records what
+was tried); the thread queries (fly sweeps, dragline casts, leg-sweep senses) go
+through a uniform grid that returns exactly the candidates a full scan would, in
+the same order, so they changed nothing but the clock. `bench/golden.bench.ts`
+prints checksums of a full generation for exactly this kind of claim: an
+optimisation that is a pure refactor leaves them unchanged.

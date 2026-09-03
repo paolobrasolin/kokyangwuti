@@ -92,12 +92,31 @@ synthesis and is still the authority on what may exist in the simulation layer.
 
 ### Performance
 
-- [ ] The solver is ~60% of a tick. The next step would be a struct-of-arrays
-      layout (typed arrays for positions and spring endpoints) rather than
-      objects; everything else is already local.
-- [ ] Population 24+ webs hold ~10k springs and run at ~10x. Per-agent arenas
-      (see "Break the prey ceiling") would also make them independent and
-      trivially parallel across workers.
+Measured on 2026-09-03 (one laptop core, 1280×720): ~50x real time at
+population 8, ~16x at population 24, with the solver at ~70% of a tick. That
+is the single-thread ceiling for *exact* physics. Every layout change that
+keeps the arithmetic identical was prototyped on a real end-of-generation
+world, checked bit-for-bit, and timed — none paid:
+
+- struct-of-arrays (typed arrays for positions, indices for springs): flat,
+  slightly slower (0.30 vs 0.27 ms per step);
+- mass ratios and half-stiffness precomputed per spring: flat;
+- interleaving independent connected components in the relaxation order (exact,
+  since webs only meet at pinned nodes): flat on mature webs, ~25% early on;
+- the same kernel in WebAssembly (clang, no FMA, bit-identical): 1.35x on the
+  kernel, 1.15x after copying positions in and out — not worth a toolchain.
+
+The loop is bound by the sqrt/divide chain per spring, not by memory layout.
+What is left changes the arithmetic or the design:
+
+- [ ] Parallel *runs*: N seeds in N worker threads (Node runner and/or the
+      page) is N× aggregate throughput with no change to any run. The cheap
+      lever for "a lot of generations".
+- [ ] Per-agent arenas (see "Break the prey ceiling") would make one run's
+      agents independent and parallel too — a design change, not a refactor.
+- [ ] Fewer relaxation iterations or reciprocal-multiply normalisation would
+      be faster but are a *different* simulation; only with a new golden
+      baseline and a deliberate decision.
 
 ### Housekeeping
 
